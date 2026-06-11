@@ -1,0 +1,13 @@
+.next
+node_modules
+.env
+.env.local
+.env.*.local
+dist
+coverage
+*.tsbuildinfo
+tools/node
+tools/node20
+tools/*.zip
+tools/*.log
+tools/*.err.log
