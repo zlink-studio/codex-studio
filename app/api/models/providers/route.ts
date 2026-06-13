@@ -14,19 +14,24 @@ export async function GET() {
   const defaults = getDefaultModelProviders();
   if (!data?.length) return ok(defaults);
 
-  const rows = data.map((provider) => ({
+  const rows = data.map((provider) => {
+    const seed = defaults.find((item) => item.name === provider.name);
+    const enabled = seed?.enabled ?? provider.enabled;
+
+    return {
       id: provider.id,
       name: provider.name,
-      displayName: provider.display_name ?? provider.name,
-      baseUrl: provider.base_url,
-      apiKeyEnv: provider.api_key_env,
-      enabled: provider.enabled,
-      status: getProviderStatus(provider.name, provider.enabled),
-      notes: provider.notes,
+      displayName: seed?.displayName ?? provider.display_name ?? provider.name,
+      baseUrl: seed?.baseUrl ?? provider.base_url,
+      apiKeyEnv: seed?.apiKeyEnv ?? provider.api_key_env,
+      enabled,
+      status: getProviderStatus(provider.name, enabled),
+      notes: seed?.notes ?? provider.notes,
       lastCheckedAt: provider.last_checked_at,
       createdAt: provider.created_at,
       updatedAt: provider.updated_at
-    }));
+    };
+  });
 
   const merged = [
     ...rows,
