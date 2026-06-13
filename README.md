@@ -8,7 +8,7 @@
 - TypeScript
 - Tailwind CSS
 - Supabase
-- OpenAI API
+- OpenAI API / Gemini / OpenRouter 等模型 Provider
 - n8n Webhook
 
 ## 核心页面
@@ -19,11 +19,13 @@
 - Tasks：任务中心和 Kanban
 - Command Center：老板指挥台
 - Meeting Room：Agent 会议室
-- Memory：统一记忆库
+- Memory：统一知识库
+- Models：模型中心
+- Setup：初始化和系统检查
 
 ## Memory 架构
 
-Supabase 是主记忆库。Google Drive / Docs / Sheets 只作为外部资料来源，资料需要进入 `draft` 或 `pending_review`，经老板审核为 `approved` 后，才会被 Agent 自动检索并注入 prompt。
+Supabase 是主记忆库。Google Drive、Docs、Sheets 等只作为外部资料来源，资料需要进入 `draft` 或 `pending_review`，经老板审核为 `approved` 后，才会被 Agent 自动检索并注入 prompt。
 
 核心表：
 
@@ -37,7 +39,18 @@ Supabase 是主记忆库。Google Drive / Docs / Sheets 只作为外部资料来
 
 ## Model Router
 
-项目已加入 LLM Provider / Model Router 抽象层。第一阶段只真实接 OpenAI，OpenRouter 和 LiteLLM 保留 adapter 占位。
+项目已经加入 LLM Provider / Model Router 抽象层。当前支持或预留：
+
+- OpenAI
+- Gemini
+- OpenRouter
+- LiteLLM
+- Anthropic
+- DeepSeek
+- Qwen
+- Kimi
+- Manual Bridge
+- Codex Local
 
 核心目录：
 
@@ -48,7 +61,13 @@ lib/memory
 
 ## 环境变量
 
-复制 `.env.example` 为 `.env.local`：
+本地开发复制 `.env.example` 为 `.env.local`，或使用加密环境包：
+
+```bash
+npm run env:import -- .env.local.enc .env.local --force
+```
+
+常用变量：
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=
@@ -56,11 +75,14 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-3.1-flash-lite
 N8N_WEBHOOK_URL=
 DEMO_OWNER_ID=
+NEXT_PUBLIC_ALLOW_DEMO_DATA=false
 ```
 
-不要把任何 `.env*` 密钥文件提交到 GitHub。
+不要提交明文 `.env.local`。仓库只允许提交加密后的 `.env.local.enc`。
 
 ## 本地运行
 
@@ -69,16 +91,24 @@ npm install
 npm run dev
 ```
 
-当前本机项目目录：
+## Codespaces 运行
 
-```text
-D:\Codex\2026-06-09\ai-next-js-typescript-tailwind-css
+打开仓库后选择 `Code -> Codespaces -> Create codespace on main`。
+
+进入终端后运行：
+
+```bash
+npm run env:import -- .env.local.enc .env.local --force
+npm run dev:codespaces
 ```
+
+然后打开 GitHub 提示的 forwarded port。更多说明见 [docs/codespaces.md](docs/codespaces.md)。
 
 ## 验证
 
 ```bash
 npm run typecheck
+npm run lint
 npm run build
 ```
 
