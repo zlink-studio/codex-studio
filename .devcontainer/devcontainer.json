@@ -1,6 +1,10 @@
 {
   "name": "OneCo AI Workbench",
   "image": "mcr.microsoft.com/devcontainers/typescript-node:1-20-bullseye",
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "8gb"
+  },
   "forwardPorts": [3000],
   "portsAttributes": {
     "3000": {
@@ -8,7 +12,8 @@
       "onAutoForward": "openPreview"
     }
   },
-  "postCreateCommand": "npm install",
+  "postCreateCommand": "npm install && bash .devcontainer/setup-codespaces-env.sh",
+  "postAttachCommand": "echo 'Run npm run dev:codespaces to start Next.js on port 3000.'",
   "customizations": {
     "vscode": {
       "extensions": [
