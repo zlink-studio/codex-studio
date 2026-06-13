@@ -1,32 +1,23 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { FormEvent, useEffect, useMemo, useState } from "react";
-import { ArrowRight, CheckCircle2, ClipboardList, Cpu, Database, ListChecks } from "lucide-react";
+import type { DragEvent, FormEvent, ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, ClipboardList, Cpu, Database, GripVertical, ListChecks, Play, RefreshCcw, RotateCcw, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Panel } from "@/components/panel";
 import { StatusBadge } from "@/components/status-badge";
 import { TaskRow } from "@/components/task-row";
-import { normalizeAgent, normalizeProject, normalizeTask, readApiData } from "@/lib/client-normalizers";
-import { agents as fallbackAgents, projects as fallbackProjects, tasks as fallbackTasks } from "@/lib/mock-data";
+import { normalizeAgent, normalizeModelRun, normalizeProject, normalizeTask, readApiData } from "@/lib/client-normalizers";
 import type { Agent, BoardStatus, ModelRunSummary, Project, Task } from "@/lib/types";
 
 const boardColumns: Array<{ id: BoardStatus; title: string; helper: string }> = [
-  { id: "backlog", title: "Backlog", helper: "待澄清" },
-  { id: "todo", title: "Todo", helper: "可执行" },
+  { id: "backlog", title: "Backlog", helper: "待澄清 / 待审批" },
+  { id: "todo", title: "Todo", helper: "可以执行" },
   { id: "in_progress", title: "In Progress", helper: "Agent 执行中" },
-  { id: "review", title: "Review", helper: "质量审核" },
+  { id: "review", title: "Review", helper: "Review Gate" },
   { id: "done", title: "Done", helper: "已完成" },
-  { id: "blocked", title: "Blocked", helper: "阻塞" }
+  { id: "blocked", title: "Blocked", helper: "被阻塞" }
 ];
-
-const nextStatus: Partial<Record<BoardStatus, BoardStatus>> = {
-  backlog: "todo",
-  todo: "in_progress",
-  in_progress: "review",
-  review: "done",
-  blocked: "todo"
-};
 
 const initialForm = {
   title: "",
@@ -60,75 +51,84 @@ type AgentRunRow = {
   taskId?: string | null;
   agent_id?: string | null;
   agentId?: string | null;
+  status?: string;
   model?: string | null;
   cost?: number;
   prompt_tokens?: number;
   completion_tokens?: number;
+  error?: string | null;
   created_at?: string;
 };
 
 type ModelRunRow = ModelRunSummary & {
   agent_run_id?: string | null;
   agentRunId?: string | null;
-  created_at?: string;
+  task_id?: string | null;
+  taskId?: string | null;
 };
 
 export function TasksWorkspace() {
-  const [items, setItems] = useState<Task[]>(fallbackTasks);
-  const [agents, setAgents] = useState<Agent[]>(fallbackAgents);
-  const [projects, setProjects] = useState<Project[]>(fallbackProjects);
+  const [items, setItems] = useState<Task[]>([]);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [logs, setLogs] = useState<TaskLogRow[]>([]);
   const [agentRuns, setAgentRuns] = useState<AgentRunRow[]>([]);
   const [modelRuns, setModelRuns] = useState<ModelRunRow[]>([]);
   const [form, setForm] = useState(initialForm);
-  const [message, setMessage] = useState("已加载本地示例数据");
+  const [message, setMessage] = useState("正在加载真实数据...");
   const [isSaving, setIsSaving] = useState(false);
-  const [selectedTaskId, setSelectedTaskId] = useState(fallbackTasks[0]?.id ?? "");
-  const [outputAgentId, setOutputAgentId] = useState(fallbackAgents[0]?.id ?? "");
-  const [outputContent, setOutputContent] = useState("");
+  const [isExecuting, setIsExecuting] = useState(false);
   const [isAppendingOutput, setIsAppendingOutput] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [selectedTaskId, setSelectedTaskId] = useState("");
+  const [outputAgentId, setOutputAgentId] = useState("");
+  const [outputContent, setOutputContent] = useState("");
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/tasks").then((response) => readApiData<any[]>(response)),
-      fetch("/api/agents").then((response) => readApiData<any[]>(response)),
-      fetch("/api/projects").then((response) => readApiData<any[]>(response)),
-      fetch("/api/task-logs").then((response) => readApiData<TaskLogRow[]>(response)).catch(() => []),
-      fetch("/api/agent-runs").then((response) => readApiData<AgentRunRow[]>(response)).catch(() => []),
-      fetch("/api/model-runs").then((response) => readApiData<ModelRunRow[]>(response)).catch(() => [])
-    ])
-      .then(([taskRows, agentRows, projectRows, logRows, runRows, modelRunRows]) => {
-        const nextTasks = taskRows.map(normalizeTask);
-        const nextAgents = agentRows.map(normalizeAgent);
-        setItems(nextTasks);
-        setAgents(nextAgents);
-        setProjects(projectRows.map(normalizeProject));
-        setLogs(logRows);
-        setAgentRuns(runRows);
-        setModelRuns(modelRunRows);
-        setSelectedTaskId(nextTasks[0]?.id ?? "");
-        setOutputAgentId(nextAgents[0]?.id ?? "");
-        setMessage("已连接 Tasks API");
-      })
-      .catch((error: Error) => setMessage(error.message));
+    void loadData();
   }, []);
 
+  async function loadData() {
+    setIsRefreshing(true);
+    try {
+      const [taskRows, agentRows, projectRows, logRows, runRows, modelRunRows] = await Promise.all([
+        fetch("/api/tasks").then((response) => readApiData<any[]>(response)),
+        fetch("/api/agents").then((response) => readApiData<any[]>(response)),
+        fetch("/api/projects").then((response) => readApiData<any[]>(response)),
+        fetch("/api/task-logs").then((response) => readApiData<TaskLogRow[]>(response)).catch(() => []),
+        fetch("/api/agent-runs").then((response) => readApiData<AgentRunRow[]>(response)).catch(() => []),
+        fetch("/api/models/runs").then((response) => readApiData<ModelRunRow[]>(response)).catch(() => [])
+      ]);
+
+      const nextTasks = taskRows.map(normalizeTask);
+      const nextAgents = agentRows.map(normalizeAgent);
+      setItems(nextTasks);
+      setAgents(nextAgents);
+      setProjects(projectRows.map(normalizeProject));
+      setLogs(logRows);
+      setAgentRuns(runRows);
+      setModelRuns(modelRunRows.map((row) => normalizeModelRun(row) as ModelRunRow));
+      setSelectedTaskId((current) => current || nextTasks[0]?.id || "");
+      setOutputAgentId((current) => current || nextAgents[0]?.id || "");
+      setMessage("已连接 Tasks API");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "加载失败");
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
+
   const selectedTask = items.find((task) => task.id === selectedTaskId) ?? items[0];
-  const selectedLogs = useMemo(
-    () => logs.filter((log) => (log.task_id ?? log.taskId) === selectedTask?.id),
-    [logs, selectedTask?.id]
-  );
-  const selectedRunIds = useMemo(
-    () => new Set(selectedLogs.map((log) => log.run_id ?? log.runId).filter(Boolean)),
-    [selectedLogs]
-  );
+  const selectedLogs = useMemo(() => logs.filter((log) => (log.task_id ?? log.taskId) === selectedTask?.id), [logs, selectedTask?.id]);
+  const selectedRunIds = useMemo(() => new Set(selectedLogs.map((log) => log.run_id ?? log.runId).filter(Boolean)), [selectedLogs]);
   const selectedAgentRuns = useMemo(
     () => agentRuns.filter((run) => (run.task_id ?? run.taskId) === selectedTask?.id || selectedRunIds.has(run.id)),
     [agentRuns, selectedRunIds, selectedTask?.id]
   );
   const selectedModelRuns = useMemo(
-    () => modelRuns.filter((run) => selectedRunIds.has(run.agent_run_id ?? run.agentRunId ?? "")),
-    [modelRuns, selectedRunIds]
+    () => modelRuns.filter((run) => (run.task_id ?? run.taskId) === selectedTask?.id || selectedRunIds.has(run.agent_run_id ?? run.agentRunId ?? "")),
+    [modelRuns, selectedRunIds, selectedTask?.id]
   );
   const memoryIds = useMemo(() => {
     const ids = selectedLogs.flatMap((log) => {
@@ -137,6 +137,16 @@ export function TasksWorkspace() {
     });
     return Array.from(new Set(ids));
   }, [selectedLogs]);
+  const boardMetrics = useMemo(
+    () => ({
+      total: items.length,
+      pendingApproval: items.filter((task) => task.approvalStatus === "pending").length,
+      running: items.filter((task) => (task.boardStatus ?? task.status) === "in_progress").length,
+      review: items.filter((task) => (task.boardStatus ?? task.status) === "review").length,
+      blocked: items.filter((task) => (task.boardStatus ?? task.status) === "blocked").length
+    }),
+    [items]
+  );
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -152,8 +162,7 @@ export function TasksWorkspace() {
             ...form,
             due_at: form.due_at || null,
             project_id: form.project_id || null,
-            assigned_agent_id: form.assigned_agent_id || null,
-            board_status: "todo"
+            assigned_agent_id: form.assigned_agent_id || null
           })
         })
       );
@@ -161,7 +170,7 @@ export function TasksWorkspace() {
       setItems((current) => [nextTask, ...current]);
       setSelectedTaskId(nextTask.id);
       setForm(initialForm);
-      setMessage(nextTask.approvalStatus === "pending" ? "任务已保存，并进入老板审批" : "任务已保存");
+      setMessage(nextTask.approvalStatus === "pending" ? "高风险任务已进入老板审批" : "任务已保存，可执行");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存失败");
     } finally {
@@ -171,9 +180,14 @@ export function TasksWorkspace() {
 
   async function moveTask(task: Task, targetStatus: BoardStatus) {
     if ((targetStatus === "in_progress" || targetStatus === "review") && task.approvalStatus === "pending") {
-      setMessage("该任务仍在审批中，不能进入执行或审核");
+      setMessage("该任务仍在老板审批中，不能进入执行或审核");
       return;
     }
+    if ((targetStatus === "in_progress" || targetStatus === "review") && task.approvalStatus === "rejected") {
+      setMessage("该任务已被拒绝，不能进入执行或审核");
+      return;
+    }
+    if ((task.boardStatus ?? task.status) === targetStatus) return;
 
     setMessage(`正在移动到 ${targetStatus}...`);
     try {
@@ -192,35 +206,160 @@ export function TasksWorkspace() {
       const nextTask = normalizeTask(data);
       setItems((current) => current.map((item) => (item.id === task.id ? nextTask : item)));
       setSelectedTaskId(task.id);
-      setMessage(targetStatus === "review" ? "任务已进入 Review，等待质量审核" : "任务状态已更新");
+      setMessage(targetStatus === "review" ? "任务已进入 Review Gate" : "任务状态已更新");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "状态更新失败");
     }
   }
 
-  async function approveReview(task: Task) {
-    setMessage("正在通过质量审核...");
+  async function retryTask(task: Task) {
+    if (task.approvalStatus === "pending") {
+      setMessage("该任务仍在老板审批中，不能重试");
+      return;
+    }
+    if (task.approvalStatus === "rejected") {
+      setMessage("该任务已被老板拒绝，不能重试");
+      return;
+    }
+
+    setMessage("正在把任务放回 Todo...");
+    try {
+      const data = await readApiData<any>(
+        await fetch("/api/tasks", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: task.id,
+            board_status: "todo",
+            status: "todo",
+            review_status: "not_required"
+          })
+        })
+      );
+      const nextTask = normalizeTask(data);
+      setItems((current) => current.map((item) => (item.id === task.id ? nextTask : item)));
+      setSelectedTaskId(task.id);
+      setMessage("任务已回到 Todo，可以重新执行");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "重试失败");
+    }
+  }
+
+  async function decideOwnerApproval(task: Task, status: "approved" | "rejected") {
+    setMessage(status === "approved" ? "正在批准高风险任务..." : "正在拒绝高风险任务...");
     try {
       await readApiData<any>(
+        await fetch("/api/approvals", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            task_id: task.id,
+            status,
+            decision_note: status === "approved" ? "老板批准执行。" : "老板拒绝执行。"
+          })
+        })
+      );
+      const nextTask: Task = {
+        ...task,
+        approvalStatus: status,
+        status: status === "approved" ? "todo" : "blocked",
+        boardStatus: status === "approved" ? "todo" : "blocked"
+      };
+      setItems((current) => current.map((item) => (item.id === task.id ? nextTask : item)));
+      setMessage(status === "approved" ? "已批准，任务可以执行" : "已拒绝，任务进入 Blocked");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "审批失败");
+    }
+  }
+
+  async function executeSelectedTask() {
+    if (!selectedTask) return;
+    const agentId = outputAgentId || selectedTask.assignedAgentId;
+    if (!agentId) {
+      setMessage("请先给任务选择一个 Agent");
+      return;
+    }
+    if (selectedTask.approvalStatus === "pending") {
+      setMessage("任务仍在老板审批中，暂不能执行");
+      return;
+    }
+    if (selectedTask.approvalStatus === "rejected") {
+      setMessage("任务已被老板拒绝，暂不能执行");
+      return;
+    }
+
+    setIsExecuting(true);
+    setMessage("Agent 正在执行任务...");
+    setItems((current) =>
+      current.map((task) => (task.id === selectedTask.id ? { ...task, status: "in_progress", boardStatus: "in_progress", reviewStatus: "not_required" } : task))
+    );
+
+    try {
+      const data = await readApiData<any>(
+        await fetch("/api/agent-runs/execute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ task_id: selectedTask.id, agent_id: agentId })
+        })
+      );
+      if (data.task) {
+        const nextTask = normalizeTask(data.task);
+        setItems((current) => current.map((task) => (task.id === nextTask.id ? nextTask : task)));
+      }
+      if (data.log) setLogs((current) => [data.log, ...current]);
+      if (data.agentRun) setAgentRuns((current) => [data.agentRun, ...current]);
+      if (data.modelRun) setModelRuns((current) => [normalizeModelRun(data.modelRun) as ModelRunRow, ...current]);
+      setMessage(data.warning ? `执行失败，任务已阻塞：${data.warning}` : "Agent 执行完成，任务已进入 Review Gate");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "执行失败");
+      setItems((current) =>
+        current.map((task) => (task.id === selectedTask.id ? { ...task, status: "blocked", boardStatus: "blocked", reviewStatus: "rejected" } : task))
+      );
+    } finally {
+      setIsExecuting(false);
+    }
+  }
+
+  async function decideReview(task: Task, status: "approved" | "rejected") {
+    setMessage(status === "approved" ? "正在通过 Review..." : "正在拒绝 Review...");
+    try {
+      const result = await readApiData<any>(
         await fetch("/api/quality-reviews", {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             task_id: task.id,
-            status: "approved",
-            score: 90,
-            notes: "老板确认可交付"
+            status,
+            score: status === "approved" ? 90 : 45,
+            checklist: [
+              { label: "输出符合任务目标", passed: status === "approved" },
+              { label: "风险和审批状态已处理", passed: status === "approved" },
+              { label: "可交付给老板或客户", passed: status === "approved" }
+            ],
+            notes: status === "approved" ? "老板确认可交付。" : "需要返工或重新拆解。"
           })
         })
       );
+      const reworkTask = result?.rework_task ? normalizeTask(result.rework_task) : null;
+      const nextBoardStatus: BoardStatus = status === "approved" ? "done" : "blocked";
       setItems((current) =>
-        current.map((item) =>
-          item.id === task.id ? { ...item, status: "done", boardStatus: "done", reviewStatus: "approved" } : item
-        )
+        [
+          ...(reworkTask ? [reworkTask] : []),
+          ...current.map((item) =>
+          item.id === task.id
+            ? {
+                ...item,
+                status: nextBoardStatus,
+                boardStatus: nextBoardStatus,
+                reviewStatus: status
+              }
+            : item
+          )
+        ]
       );
-      setMessage("质量审核已通过，任务进入 Done");
+      setMessage(status === "approved" ? "Review 已通过，任务进入 Done" : "Review 已拒绝，已生成返工任务");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "审核失败");
+      setMessage(error instanceof Error ? error.message : "Review 更新失败");
     }
   }
 
@@ -230,7 +369,6 @@ export function TasksWorkspace() {
 
     setIsAppendingOutput(true);
     setMessage("正在追加 Agent 输出...");
-
     try {
       const data = await readApiData<any>(
         await fetch("/api/tasks/outputs", {
@@ -264,38 +402,55 @@ export function TasksWorkspace() {
     }
   }
 
+  function onDrop(columnId: BoardStatus, event: DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const taskId = draggedTaskId ?? event.dataTransfer.getData("text/task-id");
+    const task = items.find((item) => item.id === taskId);
+    setDraggedTaskId(null);
+    if (task) void moveTask(task, columnId);
+  }
+
   return (
     <>
       <PageHeader
         eyebrow="Tasks"
         title="任务中心"
-        description="Kanban 看板、Agent 分配、执行日志、模型调用和 Review Gate 放在同一个 MVP 页面。"
-        action={<StatusPill text={message} />}
+        description="管理任务创建、老板审批、Agent 执行、Review Gate 和交付状态。"
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => loadData()}
+              className="inline-flex items-center gap-2 rounded-md border border-line bg-[#fbfcf8] px-3 py-2 text-sm font-semibold text-moss disabled:opacity-60"
+              disabled={isRefreshing}
+            >
+              <RefreshCcw size={15} />
+              {isRefreshing ? "刷新中" : "刷新"}
+            </button>
+            <StatusPill text={message} />
+          </div>
+        }
       />
 
+      <section className="mb-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <MetricBox label="全部任务" value={boardMetrics.total} />
+        <MetricBox label="待老板审批" value={boardMetrics.pendingApproval} tone={boardMetrics.pendingApproval ? "warn" : "normal"} />
+        <MetricBox label="执行中" value={boardMetrics.running} />
+        <MetricBox label="待 Review" value={boardMetrics.review} tone={boardMetrics.review ? "warn" : "normal"} />
+        <MetricBox label="Blocked" value={boardMetrics.blocked} tone={boardMetrics.blocked ? "danger" : "normal"} />
+      </section>
+
       <section className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
-        <Panel title="任务创建" description="高风险任务会自动进入老板审批；执行完成后进入 Review，而不是直接 Done。">
+        <Panel title="任务创建" description="高风险任务会先进入老板审批；审批通过后才可执行。">
           <form className="grid gap-4" onSubmit={submit}>
             <input className="rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-moss" placeholder="任务标题" value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required />
             <textarea className="min-h-28 rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-moss" placeholder="任务描述与验收标准" value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} required />
             <div className="grid gap-4 md:grid-cols-2">
-              <select className="rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-moss" value={form.task_type} onChange={(event) => setForm({ ...form, task_type: event.target.value })}>
-                {["general", "content", "social", "data", "table", "simple", "code", "automation", "review"].map((type) => <option key={type} value={type}>{type}</option>)}
-              </select>
-              <select className="rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-moss" value={form.assigned_agent_id} onChange={(event) => setForm({ ...form, assigned_agent_id: event.target.value })}>
-                <option value="">选择 Agent</option>
-                {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name} · {agent.agentRole ?? "worker"}</option>)}
-              </select>
-              <select className="rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-moss" value={form.project_id} onChange={(event) => setForm({ ...form, project_id: event.target.value })}>
-                <option value="">选择项目</option>
-                {projects.map((project) => <option key={project.id} value={project.id}>{project.name}</option>)}
-              </select>
-              <select className="rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-moss" value={form.priority} onChange={(event) => setForm({ ...form, priority: event.target.value })}>
-                {["low", "medium", "high", "urgent"].map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
-              <select className="rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-moss" value={form.risk_level} onChange={(event) => setForm({ ...form, risk_level: event.target.value })}>
-                {["low", "medium", "high", "critical"].map((value) => <option key={value} value={value}>{value}</option>)}
-              </select>
+              <Select value={form.task_type} onChange={(value) => setForm({ ...form, task_type: value })} options={["general", "content", "social", "data", "table", "simple", "code", "automation", "review", "contract", "long_document"]} />
+              <Select value={form.assigned_agent_id} onChange={(value) => setForm({ ...form, assigned_agent_id: value })} options={["", ...agents.map((agent) => agent.id)]} labels={{ "": "选择 Agent", ...Object.fromEntries(agents.map((agent) => [agent.id, `${agent.name} / ${agent.agentRole ?? "worker"}`])) }} />
+              <Select value={form.project_id} onChange={(value) => setForm({ ...form, project_id: value })} options={["", ...projects.map((project) => project.id)]} labels={{ "": "选择项目", ...Object.fromEntries(projects.map((project) => [project.id, project.name])) }} />
+              <Select value={form.priority} onChange={(value) => setForm({ ...form, priority: value })} options={["low", "medium", "high", "urgent"]} />
+              <Select value={form.risk_level} onChange={(value) => setForm({ ...form, risk_level: value })} options={["low", "medium", "high", "critical"]} />
               <input type="datetime-local" className="rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-moss" value={form.due_at} onChange={(event) => setForm({ ...form, due_at: event.target.value })} />
             </div>
             <button className="w-fit rounded-md bg-moss px-4 py-2 text-sm font-semibold text-paper disabled:opacity-60" disabled={isSaving}>
@@ -304,41 +459,80 @@ export function TasksWorkspace() {
           </form>
         </Panel>
 
-        <Panel title="任务详情与执行记录" description="查看 Agent 输出、模型成本/耗时，以及本任务使用过的 approved memories。">
+        <Panel title="任务详情与执行" description="选择任务后，可审批高风险任务、执行 Agent、追加输出，并完成 Review Gate。">
           {selectedTask ? (
             <div className="space-y-4">
               <div className="grid gap-3 md:grid-cols-[1fr_0.8fr]">
                 <label>
                   <span className="text-sm font-medium text-ink">选择任务</span>
                   <select className="mt-2 w-full rounded-md border border-line bg-[#fbfcf8] px-3 py-2 text-sm outline-none focus:border-moss" value={selectedTask.id} onChange={(event) => setSelectedTaskId(event.target.value)}>
-                    {items.map((task) => <option key={task.id} value={task.id}>{task.title}</option>)}
+                    {items.map((task) => (
+                      <option key={task.id} value={task.id}>{task.title}</option>
+                    ))}
                   </select>
                 </label>
                 <label>
-                  <span className="text-sm font-medium text-ink">输出 Agent</span>
+                  <span className="text-sm font-medium text-ink">执行 Agent</span>
                   <select className="mt-2 w-full rounded-md border border-line bg-[#fbfcf8] px-3 py-2 text-sm outline-none focus:border-moss" value={outputAgentId} onChange={(event) => setOutputAgentId(event.target.value)}>
-                    {agents.map((agent) => <option key={agent.id} value={agent.id}>{agent.name}</option>)}
+                    {agents.map((agent) => (
+                      <option key={agent.id} value={agent.id}>{agent.name} / {agent.agentRole ?? "worker"}</option>
+                    ))}
                   </select>
                 </label>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {selectedTask.approvalStatus === "pending" && (
+                  <>
+                    <button onClick={() => decideOwnerApproval(selectedTask, "approved")} className="inline-flex items-center gap-2 rounded-md bg-moss px-3 py-2 text-sm font-semibold text-paper">
+                      <CheckCircle2 size={16} />
+                      批准执行
+                    </button>
+                    <button onClick={() => decideOwnerApproval(selectedTask, "rejected")} className="inline-flex items-center gap-2 rounded-md border border-line px-3 py-2 text-sm font-semibold text-moss">
+                      <XCircle size={16} />
+                      拒绝任务
+                    </button>
+                  </>
+                )}
+                <button onClick={executeSelectedTask} disabled={isExecuting || selectedTask.approvalStatus === "pending" || selectedTask.approvalStatus === "rejected"} className="inline-flex items-center gap-2 rounded-md bg-ink px-3 py-2 text-sm font-semibold text-paper disabled:opacity-60">
+                  <Play size={16} />
+                  {isExecuting ? "执行中..." : "执行 Agent"}
+                </button>
+                {selectedTask.boardStatus === "blocked" && selectedTask.approvalStatus !== "rejected" && (
+                  <button onClick={() => retryTask(selectedTask)} className="inline-flex items-center gap-2 rounded-md border border-line px-3 py-2 text-sm font-semibold text-moss">
+                    <RotateCcw size={16} />
+                    放回 Todo
+                  </button>
+                )}
+                {selectedTask.boardStatus === "review" && (
+                  <>
+                    <button onClick={() => decideReview(selectedTask, "approved")} className="inline-flex items-center gap-2 rounded-md bg-moss px-3 py-2 text-sm font-semibold text-paper">
+                      <CheckCircle2 size={16} />
+                      Review 通过
+                    </button>
+                    <button onClick={() => decideReview(selectedTask, "rejected")} className="inline-flex items-center gap-2 rounded-md border border-line px-3 py-2 text-sm font-semibold text-moss">
+                      <XCircle size={16} />
+                      Review 拒绝
+                    </button>
+                  </>
+                )}
               </div>
 
               <div className="grid gap-3 md:grid-cols-3">
                 <InfoBox icon={<Cpu size={16} />} label="模型调用" value={selectedModelRuns[0] ? `${selectedModelRuns[0].provider} / ${selectedModelRuns[0].model}` : selectedAgentRuns[0]?.model ?? "暂无"} />
-                <InfoBox icon={<ListChecks size={16} />} label="成本/耗时" value={selectedModelRuns[0] ? `$${(selectedModelRuns[0].estimatedCost ?? 0).toFixed(5)} · ${selectedModelRuns[0].latencyMs ?? 0}ms` : "暂无"} />
+                <InfoBox icon={<ListChecks size={16} />} label="成本/耗时" value={selectedModelRuns[0] ? `$${(selectedModelRuns[0].estimatedCost ?? 0).toFixed(5)} / ${selectedModelRuns[0].latencyMs ?? 0}ms` : "暂无"} />
                 <InfoBox icon={<Database size={16} />} label="使用记忆" value={memoryIds.length ? `${memoryIds.length} 条` : "暂无"} />
               </div>
 
-              {memoryIds.length > 0 && (
-                <div className="rounded-md border border-line bg-[#fbfcf8] p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-moss">Memory IDs</p>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {memoryIds.map((id) => <span key={id} className="rounded-md bg-[#e8efe4] px-2 py-1 text-xs text-moss">{id}</span>)}
-                  </div>
+              {selectedTask.approvalStatus === "pending" && (
+                <div className="flex items-start gap-2 rounded-md border border-line bg-amber/10 p-3 text-sm leading-6 text-[#7a4814]">
+                  <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+                  这是高风险任务，必须先由老板批准，Agent 才能执行。
                 </div>
               )}
 
               <form className="space-y-3" onSubmit={appendOutput}>
-                <textarea className="min-h-24 w-full rounded-md border border-line bg-[#fbfcf8] px-3 py-2 text-sm outline-none focus:border-moss" placeholder="写入 Agent 本轮输出、分析结论或执行结果" value={outputContent} onChange={(event) => setOutputContent(event.target.value)} required />
+                <textarea className="min-h-24 w-full rounded-md border border-line bg-[#fbfcf8] px-3 py-2 text-sm outline-none focus:border-moss" placeholder="手动追加 Agent 输出、分析结论或执行结果" value={outputContent} onChange={(event) => setOutputContent(event.target.value)} required />
                 <button className="rounded-md bg-ink px-3 py-2 text-sm font-semibold text-paper disabled:opacity-60" disabled={isAppendingOutput}>
                   {isAppendingOutput ? "写入中..." : "追加输出"}
                 </button>
@@ -348,13 +542,13 @@ export function TasksWorkspace() {
                 <Timeline title="输出记录" empty="暂无输出记录">
                   {selectedTask.outputs.map((output) => {
                     const agent = agents.find((item) => item.id === output.agentId);
-                    return <LogItem key={`${output.createdAt}-${output.content}`} title={`${agent?.name ?? output.agentId} · ${output.createdAt.slice(0, 19)}`} content={output.content} />;
+                    return <LogItem key={`${output.createdAt}-${output.content}`} title={`${agent?.name ?? output.agentId} / ${output.createdAt.slice(0, 19)}`} content={output.content} />;
                   })}
                 </Timeline>
                 <Timeline title="执行日志" empty="暂无日志">
                   {selectedLogs.map((log) => {
                     const agent = agents.find((item) => item.id === (log.agent_id ?? log.agentId));
-                    return <LogItem key={log.id} title={`${log.type} · ${agent?.name ?? "system"} · ${(log.created_at ?? log.createdAt ?? "").slice(0, 19)}`} content={log.content} />;
+                    return <LogItem key={log.id} title={`${log.type} / ${agent?.name ?? "system"} / ${(log.created_at ?? log.createdAt ?? "").slice(0, 19)}`} content={log.content} />;
                   })}
                 </Timeline>
               </div>
@@ -366,10 +560,15 @@ export function TasksWorkspace() {
       </section>
 
       <section className="mt-6">
-        <Panel title="Kanban 任务看板" description="第一阶段先用状态按钮替代拖拽，后续可接入 dnd-kit。">
+        <Panel title="Kanban 任务看板" description="拖拽任务卡流转状态；审批中的高风险任务会被拦截。">
           <div className="grid gap-4 xl:grid-cols-6">
             {boardColumns.map((column) => (
-              <div key={column.id} className="min-h-72 rounded-md border border-line bg-paper p-3">
+              <div
+                key={column.id}
+                className="min-h-72 rounded-md border border-line bg-paper p-3"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => onDrop(column.id, event)}
+              >
                 <div className="mb-3 flex items-start justify-between gap-2">
                   <div>
                     <h3 className="text-sm font-semibold text-ink">{column.title}</h3>
@@ -389,8 +588,15 @@ export function TasksWorkspace() {
                         agentName={agents.find((agent) => agent.id === task.assignedAgentId)?.name ?? "未分配"}
                         selected={task.id === selectedTask?.id}
                         onSelect={() => setSelectedTaskId(task.id)}
-                        onMove={(target) => moveTask(task, target)}
-                        onApproveReview={() => approveReview(task)}
+                        onDragStart={(event) => {
+                          setDraggedTaskId(task.id);
+                          event.dataTransfer.setData("text/task-id", task.id);
+                        }}
+                        onApprove={() => decideOwnerApproval(task, "approved")}
+                        onReject={() => decideOwnerApproval(task, "rejected")}
+                        onReviewApprove={() => decideReview(task, "approved")}
+                        onReviewReject={() => decideReview(task, "rejected")}
+                        onRetry={() => retryTask(task)}
                       />
                     ))}
                 </div>
@@ -401,7 +607,7 @@ export function TasksWorkspace() {
       </section>
 
       <section className="mt-6">
-        <Panel title="任务表格" description="保留表格视图，方便扫描全部任务。">
+        <Panel title="任务表格" description="表格视图方便扫描全部任务。">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[780px] text-left">
               <thead>
@@ -428,47 +634,63 @@ function KanbanCard({
   agentName,
   selected,
   onSelect,
-  onMove,
-  onApproveReview
+  onDragStart,
+  onApprove,
+  onReject,
+  onReviewApprove,
+  onReviewReject,
+  onRetry
 }: {
   task: Task;
   agentName: string;
   selected: boolean;
   onSelect: () => void;
-  onMove: (target: BoardStatus) => void;
-  onApproveReview: () => void;
+  onDragStart: (event: DragEvent<HTMLElement>) => void;
+  onApprove: () => void;
+  onReject: () => void;
+  onReviewApprove: () => void;
+  onReviewReject: () => void;
+  onRetry: () => void;
 }) {
-  const boardStatus = task.boardStatus ?? task.status;
-  const next = nextStatus[boardStatus as BoardStatus];
-
   return (
-    <article className={`rounded-md border p-3 ${selected ? "border-moss bg-[#fbfcf8]" : "border-line bg-[#fbfcf8]"}`}>
+    <article
+      draggable
+      onDragStart={onDragStart}
+      className={`cursor-grab rounded-md border p-3 active:cursor-grabbing ${selected ? "border-moss bg-[#fbfcf8]" : "border-line bg-[#fbfcf8]"}`}
+    >
       <button className="block w-full text-left" onClick={onSelect}>
         <div className="flex items-start justify-between gap-2">
           <h4 className="text-sm font-semibold leading-5 text-ink">{task.title}</h4>
-          <StatusBadge value={task.riskLevel} />
+          <GripVertical size={16} className="shrink-0 text-moss" />
         </div>
         <p className="mt-2 line-clamp-3 text-xs leading-5 text-moss">{task.description}</p>
       </button>
       <div className="mt-3 flex flex-wrap gap-2">
         <span className="rounded-md bg-[#e8efe4] px-2 py-1 text-xs font-medium text-moss">{agentName}</span>
+        <StatusBadge value={task.riskLevel} />
         <StatusBadge value={task.approvalStatus} />
         <StatusBadge value={task.reviewStatus ?? "not_required"} />
       </div>
-      <div className="mt-3 flex flex-wrap gap-2">
-        {next && (
-          <button className="inline-flex items-center gap-1 rounded-md bg-moss px-2 py-1.5 text-xs font-semibold text-paper" onClick={() => onMove(next)}>
-            <ArrowRight size={13} />
-            {next === "review" ? "送审" : `到 ${next}`}
+      {task.approvalStatus === "pending" && (
+        <div className="mt-3 flex gap-2">
+          <button className="rounded-md bg-moss px-2 py-1.5 text-xs font-semibold text-paper" onClick={onApprove}>批准</button>
+          <button className="rounded-md border border-line px-2 py-1.5 text-xs font-semibold text-moss" onClick={onReject}>拒绝</button>
+        </div>
+      )}
+      {task.boardStatus === "review" && (
+        <div className="mt-3 flex gap-2">
+          <button className="rounded-md bg-ink px-2 py-1.5 text-xs font-semibold text-paper" onClick={onReviewApprove}>Review 通过</button>
+          <button className="rounded-md border border-line px-2 py-1.5 text-xs font-semibold text-moss" onClick={onReviewReject}>拒绝</button>
+        </div>
+      )}
+      {task.boardStatus === "blocked" && task.approvalStatus !== "rejected" && (
+        <div className="mt-3 flex gap-2">
+          <button className="inline-flex items-center gap-1 rounded-md bg-ink px-2 py-1.5 text-xs font-semibold text-paper" onClick={onRetry}>
+            <RotateCcw size={13} />
+            放回 Todo
           </button>
-        )}
-        {boardStatus === "review" && (
-          <button className="inline-flex items-center gap-1 rounded-md bg-ink px-2 py-1.5 text-xs font-semibold text-paper" onClick={onApproveReview}>
-            <CheckCircle2 size={13} />
-            Review 通过
-          </button>
-        )}
-      </div>
+        </div>
+      )}
     </article>
   );
 }
@@ -481,6 +703,22 @@ function InfoBox({ icon, label, value }: { icon: ReactNode; label: string; value
         {label}
       </div>
       <p className="mt-2 truncate text-sm font-semibold text-ink">{value}</p>
+    </div>
+  );
+}
+
+function MetricBox({ label, value, tone = "normal" }: { label: string; value: number; tone?: "normal" | "warn" | "danger" }) {
+  const toneClass =
+    tone === "danger"
+      ? "border-[#d89b8c] bg-[#fff7f4] text-[#8a3427]"
+      : tone === "warn"
+        ? "border-[#d8b46a] bg-[#fffaf0] text-[#7a4814]"
+        : "border-line bg-[#fbfcf8] text-moss";
+
+  return (
+    <div className={`rounded-md border p-3 ${toneClass}`}>
+      <p className="text-xs font-semibold uppercase tracking-wide">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-ink">{value}</p>
     </div>
   );
 }
@@ -501,8 +739,20 @@ function LogItem({ title, content }: { title: string; content: string }) {
   return (
     <div className="rounded-md bg-[#e8efe4] p-3 text-sm leading-6 text-moss">
       <p className="font-semibold text-ink">{title}</p>
-      <p className="mt-1">{content}</p>
+      <p className="mt-1 whitespace-pre-wrap">{content}</p>
     </div>
+  );
+}
+
+function Select({ value, onChange, options, labels = {} }: { value: string; onChange: (value: string) => void; options: string[]; labels?: Record<string, string> }) {
+  return (
+    <select className="rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-moss" value={value} onChange={(event) => onChange(event.target.value)}>
+      {options.map((option) => (
+        <option key={option || "blank"} value={option}>
+          {labels[option] ?? option}
+        </option>
+      ))}
+    </select>
   );
 }
 

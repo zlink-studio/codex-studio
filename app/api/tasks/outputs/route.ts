@@ -1,5 +1,6 @@
 import { fail, ok, parseJson } from "@/lib/api";
 import { tasks } from "@/lib/mock-data";
+import { isDemoDataEnabled, setupRequiredPayload } from "@/lib/runtime";
 import { createSupabaseServerClient } from "@/lib/supabase";
 
 export async function POST(request: Request) {
@@ -22,6 +23,7 @@ export async function POST(request: Request) {
 
   const supabase = createSupabaseServerClient();
   if (!supabase) {
+    if (!isDemoDataEnabled()) return fail(setupRequiredPayload("task_outputs").message, 503);
     const task = tasks.find((item) => item.id === body.task_id);
     return ok({
       ...(task ?? { id: body.task_id }),

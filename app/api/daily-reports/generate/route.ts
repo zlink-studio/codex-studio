@@ -1,6 +1,7 @@
 import { fail, ok, parseJson, resolveOwnerId } from "@/lib/api";
 import { normalizeAgent, normalizeProject, normalizeTask } from "@/lib/client-normalizers";
 import { generateDailyReport } from "@/lib/reporting";
+import { isDemoDataEnabled, setupRequiredPayload } from "@/lib/runtime";
 import { createSupabaseServerClient } from "@/lib/supabase";
 
 export async function POST(request: Request) {
@@ -9,6 +10,7 @@ export async function POST(request: Request) {
   const supabase = createSupabaseServerClient();
 
   if (!supabase) {
+    if (!isDemoDataEnabled()) return fail(setupRequiredPayload("daily_reports").message, 503);
     return ok({ ...(await generateDailyReport({ reportDate })), persisted: false }, { status: 201 });
   }
 

@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Bot, ClipboardList, Command, FolderKanban, LayoutDashboard, MessageSquareText } from "lucide-react";
+import { BookOpen, Bot, ClipboardList, Command, Cpu, FolderKanban, LayoutDashboard, MessageSquareText, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const navItems = [
@@ -12,9 +12,11 @@ const navItems = [
   { href: "/agents", label: "Agents", icon: Bot },
   { href: "/projects", label: "Projects", icon: FolderKanban },
   { href: "/tasks", label: "Tasks", icon: ClipboardList },
+  { href: "/models", label: "Models", icon: Cpu },
   { href: "/command-center", label: "Command Center", icon: Command },
   { href: "/meeting-room", label: "Meeting Room", icon: MessageSquareText },
-  { href: "/memory", label: "Memory", icon: BookOpen }
+  { href: "/memory", label: "Memory", icon: BookOpen },
+  { href: "/setup", label: "Setup", icon: Settings }
 ];
 
 export function AppShell({ children }: { children: ReactNode }) {
@@ -35,7 +37,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <nav className="mt-8 space-y-1">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const active = pathname === item.href;
+            const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
 
             return (
               <Link
@@ -64,13 +66,13 @@ export function AppShell({ children }: { children: ReactNode }) {
             </div>
             <div className="flex items-center gap-2 rounded-md border border-line bg-[#fbfcf8] px-3 py-2 text-sm text-moss">
               <span className="h-2 w-2 rounded-full bg-amber" />
-              今日 4 名员工在线
+              真实模式优先
             </div>
           </div>
           <nav className="flex gap-2 overflow-x-auto border-t border-line px-4 py-2 lg:hidden">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const active = pathname === item.href;
+              const active = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
               return (
                 <Link
                   key={item.href}

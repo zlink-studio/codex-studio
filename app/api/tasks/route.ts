@@ -1,10 +1,11 @@
 import { cleanEmptyRelations, fail, ok, parseJson, resolveOwnerId } from "@/lib/api";
 import { tasks } from "@/lib/mock-data";
+import { isDemoDataEnabled, setupRequiredPayload } from "@/lib/runtime";
 import { createSupabaseServerClient } from "@/lib/supabase";
 
 export async function GET() {
   const supabase = createSupabaseServerClient();
-  if (!supabase) return ok(tasks);
+  if (!supabase) return ok(isDemoDataEnabled() ? tasks : []);
 
   const { data, error } = await supabase.from("tasks").select("*").order("created_at", { ascending: false });
   if (error) return fail(error.message, 500);
@@ -23,12 +24,16 @@ export async function POST(request: Request) {
     ...cleanEmptyRelations(body, ["project_id", "assigned_agent_id"]),
     risk_level: riskLevel,
     approval_status: needsApproval ? "pending" : body.approval_status ?? "not_required",
-    board_status: body.board_status ?? body.status ?? "todo",
+    board_status: needsApproval ? "backlog" : body.board_status ?? body.status ?? "todo",
+    status: needsApproval ? "backlog" : body.status ?? "todo",
     review_status: body.review_status ?? "not_required"
   };
 
   const supabase = createSupabaseServerClient();
-  if (!supabase) return ok({ ...taskPayload, id: crypto.randomUUID() }, { status: 201 });
+  if (!supabase) {
+    if (isDemoDataEnabled()) return ok({ ...taskPayload, id: crypto.randomUUID() }, { status: 201 });
+    return fail(setupRequiredPayload("tasks").message, 503);
+  }
 
   const ownerId = resolveOwnerId(body);
   if (!ownerId) return fail("owner_id or DEMO_OWNER_ID is required when Supabase is configured");
@@ -54,7 +59,28 @@ export async function PATCH(request: Request) {
   const body = await parseJson<Record<string, unknown>>(request);
   if (!body?.id) return fail("id is required");
 
+  const supabase = createSupabaseServerClient();
+  if (!supabase) {
+    if (!isDemoDataEnabled()) return fail(setupRequiredPayload("tasks").message, 503);
+    const task = tasks.find((item) => item.id === body.id);
+    return ok({ ...(task ?? { id: body.id }), ...body, updated_at: new Date().toISOString() });
+  }
+
+  const { data: currentTask, error: readError } = await supabase
+    .from("tasks")
+    .select("*")
+    .eq("id", body.id)
+    .single();
+  if (readError) return fail(readError.message, 404);
+
   const boardStatus = typeof body.board_status === "string" ? body.board_status : undefined;
+  if ((boardStatus === "in_progress" || boardStatus === "review") && currentTask.approval_status === "pending") {
+    return fail("This task is waiting for owner approval and cannot move into execution.", 409);
+  }
+  if ((boardStatus === "in_progress" || boardStatus === "review") && currentTask.approval_status === "rejected") {
+    return fail("This task was rejected and cannot move into execution.", 409);
+  }
+
   const status = typeof body.status === "string" ? body.status : boardStatus;
   const reviewStatus =
     boardStatus === "review" ? "pending" : typeof body.review_status === "string" ? body.review_status : undefined;
@@ -67,27 +93,48 @@ export async function PATCH(request: Request) {
     updated_at: new Date().toISOString()
   };
 
-  const supabase = createSupabaseServerClient();
-  if (!supabase) {
-    const task = tasks.find((item) => item.id === body.id);
-    return ok({ ...(task ?? { id: body.id }), ...patch });
-  }
-
   const { data: task, error } = await supabase.from("tasks").update(patch).eq("id", body.id).select("*").single();
   if (error) return fail(error.message, 500);
 
-  if (boardStatus === "review" && task.owner_id) {
-    await supabase.from("quality_reviews").insert({
-      owner_id: task.owner_id,
-      task_id: task.id,
-      reviewer_agent_id: task.assigned_agent_id,
-      status: "pending",
-      checklist: [
-        { label: "输出符合任务目标", passed: false },
-        { label: "风险和审批状态已处理", passed: false },
-        { label: "可交付给老板或客户", passed: false }
-      ]
+  if (boardStatus && currentTask.owner_id && boardStatus !== currentTask.board_status) {
+    await supabase.from("task_logs").insert({
+      owner_id: currentTask.owner_id,
+      task_id: currentTask.id,
+      agent_id: currentTask.assigned_agent_id,
+      type: "action",
+      content: `任务状态从 ${currentTask.board_status ?? currentTask.status} 移动到 ${boardStatus}`,
+      metadata: {
+        source: "tasks_patch",
+        previous_board_status: currentTask.board_status ?? currentTask.status,
+        next_board_status: boardStatus
+      }
     });
+  }
+
+  if (boardStatus === "review" && task.owner_id) {
+    const { data: existingReview, error: reviewLookupError } = await supabase
+      .from("quality_reviews")
+      .select("id")
+      .eq("task_id", task.id)
+      .eq("status", "pending")
+      .limit(1)
+      .maybeSingle();
+    if (reviewLookupError) return fail(reviewLookupError.message, 500);
+
+    if (!existingReview) {
+      await supabase.from("quality_reviews").insert({
+        owner_id: task.owner_id,
+        task_id: task.id,
+        reviewer_agent_id: task.assigned_agent_id,
+        status: "pending",
+        checklist: [
+          { label: "输出符合任务目标", passed: false },
+          { label: "风险和审批状态已处理", passed: false },
+          { label: "可交付给老板或客户", passed: false }
+        ],
+        notes: "任务进入 Review Gate，等待老板或 Reviewer 确认。"
+      });
+    }
   }
 
   return ok(task);

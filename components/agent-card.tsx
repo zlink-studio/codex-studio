@@ -14,9 +14,15 @@ export function AgentCard({ agent }: { agent: Agent }) {
       <div className="mt-4 space-y-2 text-sm text-moss">
         <p>部门：{agent.department}</p>
         <p>角色：{agent.agentRole ?? "worker"}</p>
-        <p>模型：{agent.model}</p>
+        <p>默认模型：{agent.model}</p>
         <p>策略：{agent.preferredModelPolicy ?? "自动路由"}</p>
-        <p>Fallback：{agent.fallbackModel ?? "gpt-4o-mini"}</p>
+        <p>
+          首选：{agent.preferredProvider ?? "policy"} / {agent.preferredModel ?? agent.model}
+        </p>
+        <p>
+          备用：{agent.fallbackProvider ?? "openai"} / {agent.fallbackModel ?? "gpt-4o-mini"}
+        </p>
+        <p>成本上限：{agent.maxCostPerRun ? `$${agent.maxCostPerRun}` : "未设置"}</p>
         <p>负载：{agent.workload ?? 0}%</p>
         <p>成功率：{agent.successRate}%</p>
         <p className="line-clamp-2">焦点：{agent.currentFocus}</p>

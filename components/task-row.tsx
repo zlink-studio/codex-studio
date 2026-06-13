@@ -18,7 +18,7 @@ export function TaskRow({
       <td className="py-4 pr-4 align-top">
         <p className="font-medium text-ink">{task.title}</p>
         <p className="mt-1 max-w-xl text-sm leading-5 text-moss">
-          {task.taskType ? `${task.taskType} · ` : ""}
+          {task.taskType ? `${task.taskType} / ` : ""}
           {task.description}
         </p>
       </td>

@@ -31,6 +31,20 @@ export type KnowledgeSourceType = "manual" | "upload" | "wps" | "kdocs" | "notio
 export type KnowledgeSourceSyncMode = "manual" | "scheduled" | "webhook";
 export type KnowledgeSourceStatus = "active" | "paused" | "error";
 export type ToolConnectionType = "openai" | "supabase" | "n8n" | "browser" | "email" | "crm";
+export type ModelProviderName =
+  | "openai"
+  | "codex_local"
+  | "manual_bridge"
+  | "openrouter"
+  | "litellm"
+  | "anthropic"
+  | "gemini"
+  | "deepseek"
+  | "qwen"
+  | "kimi";
+export type ModelProviderStatus = "configured" | "missing_key" | "disabled" | "error";
+export type ModelCatalogCapability = "chat" | "json" | "tools" | "vision" | "embedding" | "long_context";
+export type ModelRunStatus = "success" | "error" | "fallback" | "succeeded" | "failed";
 
 export type Agent = {
   id: string;
@@ -45,8 +59,15 @@ export type Agent = {
   agentRole?: AgentRole;
   skills?: string[];
   workload?: number;
+  modelPolicyId?: string | null;
   preferredModelPolicy?: string | null;
+  preferredProvider?: ModelProviderName | null;
+  preferredModel?: string | null;
+  fallbackProvider?: ModelProviderName | null;
   fallbackModel?: string | null;
+  maxCostPerRun?: number | null;
+  temperature?: number | null;
+  maxTokens?: number | null;
   currentFocus?: string;
   successRate: number;
 };
@@ -216,11 +237,10 @@ export type MemoryReviewQueueItem = {
   memory?: Memory;
 };
 
-export type ModelProviderName = "openai" | "openrouter" | "litellm";
-
 export type ModelPolicy = {
   id?: string;
   name: string;
+  description?: string | null;
   agentRole?: AgentRole | null;
   taskType?: string | null;
   riskLevel?: RiskLevel | null;
@@ -234,15 +254,51 @@ export type ModelPolicy = {
   enabled: boolean;
 };
 
+export type ModelProvider = {
+  id?: string;
+  name: ModelProviderName;
+  displayName: string;
+  baseUrl?: string | null;
+  apiKeyEnv: string;
+  enabled: boolean;
+  status: ModelProviderStatus;
+  notes?: string | null;
+  lastCheckedAt?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type ModelCatalogItem = {
+  id?: string;
+  provider: ModelProviderName;
+  model: string;
+  displayName: string;
+  contextWindow?: number | null;
+  inputCostPer1m?: number | null;
+  outputCostPer1m?: number | null;
+  capabilities: ModelCatalogCapability[];
+  recommendedUse: string[];
+  enabled: boolean;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type ModelRunSummary = {
   id?: string;
   provider: string;
   model: string;
+  agentRunId?: string | null;
+  taskId?: string | null;
+  agentId?: string | null;
+  policyName?: string | null;
   inputTokens?: number;
   outputTokens?: number;
   estimatedCost?: number;
   latencyMs?: number;
-  status?: string;
+  status?: ModelRunStatus | string;
+  error?: string | null;
+  createdAt?: string;
 };
 
 export type Meeting = {

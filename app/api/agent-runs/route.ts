@@ -1,4 +1,5 @@
 import { fail, ok, parseJson, resolveOwnerId } from "@/lib/api";
+import { isDemoDataEnabled, setupRequiredPayload } from "@/lib/runtime";
 import { createSupabaseServerClient } from "@/lib/supabase";
 
 export async function GET(request: Request) {
@@ -20,6 +21,7 @@ export async function POST(request: Request) {
 
   const supabase = createSupabaseServerClient();
   if (!supabase) {
+    if (!isDemoDataEnabled()) return fail(setupRequiredPayload("agent_runs").message, 503);
     return ok({ ...body, id: crypto.randomUUID(), status: body.status ?? "queued", created_at: new Date().toISOString() }, { status: 201 });
   }
 

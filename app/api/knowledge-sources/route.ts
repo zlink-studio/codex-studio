@@ -1,5 +1,6 @@
 import { fail, ok, parseJson, resolveOwnerId } from "@/lib/api";
 import { knowledgeSources } from "@/lib/mock-data";
+import { isDemoDataEnabled, setupRequiredPayload } from "@/lib/runtime";
 import { createSupabaseServerClient } from "@/lib/supabase";
 
 type SourceBody = {
@@ -19,7 +20,7 @@ type SourceBody = {
 export async function GET(request: Request) {
   const ownerId = resolveOwnerId(Object.fromEntries(new URL(request.url).searchParams.entries()));
   const supabase = createSupabaseServerClient();
-  if (!supabase) return ok(knowledgeSources);
+  if (!supabase) return ok(isDemoDataEnabled() ? knowledgeSources : []);
 
   let query = supabase.from("knowledge_sources").select("*").order("updated_at", { ascending: false }).limit(100);
   if (ownerId) query = query.or(`owner_id.is.null,owner_id.eq.${ownerId}`);
@@ -44,7 +45,10 @@ export async function POST(request: Request) {
   };
 
   const supabase = createSupabaseServerClient();
-  if (!supabase) return ok({ ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString() }, { status: 201 });
+  if (!supabase) {
+    if (isDemoDataEnabled()) return ok({ ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString() }, { status: 201 });
+    return fail(setupRequiredPayload("knowledge_sources").message, 503);
+  }
 
   const { data, error } = await supabase.from("knowledge_sources").insert(payload).select("*").single();
   if (error) return fail(error.message, 500);

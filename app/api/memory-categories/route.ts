@@ -1,5 +1,6 @@
 import { fail, ok, parseJson, resolveOwnerId } from "@/lib/api";
 import { memoryCategories } from "@/lib/mock-data";
+import { isDemoDataEnabled, setupRequiredPayload } from "@/lib/runtime";
 import { createSupabaseServerClient } from "@/lib/supabase";
 
 type CategoryBody = {
@@ -18,7 +19,7 @@ type CategoryBody = {
 export async function GET(request: Request) {
   const ownerId = resolveOwnerId(Object.fromEntries(new URL(request.url).searchParams.entries()));
   const supabase = createSupabaseServerClient();
-  if (!supabase) return ok(memoryCategories);
+  if (!supabase) return ok(isDemoDataEnabled() ? memoryCategories : []);
 
   let query = supabase.from("memory_categories").select("*").order("sort_order", { ascending: true });
   if (ownerId) query = query.or(`owner_id.is.null,owner_id.eq.${ownerId}`);
@@ -42,7 +43,10 @@ export async function POST(request: Request) {
   };
 
   const supabase = createSupabaseServerClient();
-  if (!supabase) return ok({ ...payload, id: crypto.randomUUID() }, { status: 201 });
+  if (!supabase) {
+    if (isDemoDataEnabled()) return ok({ ...payload, id: crypto.randomUUID() }, { status: 201 });
+    return fail(setupRequiredPayload("memory_categories").message, 503);
+  }
 
   const { data, error } = await supabase.from("memory_categories").insert(payload).select("*").single();
   if (error) return fail(error.message, 500);

@@ -40,8 +40,13 @@ export async function PATCH(request: Request) {
     approvalId = approval?.id;
   }
 
+  const taskPatch =
+    body.status === "approved"
+      ? { approval_status: "approved", board_status: "todo", status: "todo", updated_at: new Date().toISOString() }
+      : { approval_status: "rejected", board_status: "blocked", status: "blocked", updated_at: new Date().toISOString() };
+
   if (!approvalId && body.task_id) {
-    const { data, error } = await supabase.from("tasks").update({ approval_status: body.status }).eq("id", body.task_id).select("*").single();
+    const { data, error } = await supabase.from("tasks").update(taskPatch).eq("id", body.task_id).select("*").single();
     if (error) return fail(error.message, 500);
     return ok(data);
   }
@@ -58,6 +63,6 @@ export async function PATCH(request: Request) {
     .single();
   if (error) return fail(error.message, 500);
 
-  await supabase.from("tasks").update({ approval_status: body.status }).eq("id", data.task_id);
+  await supabase.from("tasks").update(taskPatch).eq("id", data.task_id);
   return ok(data);
 }

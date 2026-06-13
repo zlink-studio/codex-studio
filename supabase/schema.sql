@@ -23,8 +23,15 @@ create table if not exists public.agents (
   agent_role text not null default 'worker',
   skills text[] not null default '{}',
   workload integer not null default 0,
+  model_policy_id uuid,
   preferred_model_policy text,
+  preferred_provider text,
+  preferred_model text,
+  fallback_provider text,
   fallback_model text,
+  max_cost_per_run numeric,
+  temperature numeric,
+  max_tokens integer,
   last_heartbeat_at timestamptz,
   current_focus text,
   success_rate numeric(5,2) not null default 0,
@@ -255,17 +262,39 @@ create table if not exists public.model_providers (
   id uuid primary key default uuid_generate_v4(),
   owner_id uuid references public.users(id) on delete cascade,
   name text not null,
+  display_name text,
   base_url text,
   api_key_env text not null,
   enabled boolean not null default true,
+  status text not null default 'missing_key',
   notes text,
-  created_at timestamptz not null default now()
+  last_checked_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.model_catalog (
+  id uuid primary key default uuid_generate_v4(),
+  owner_id uuid references public.users(id) on delete cascade,
+  provider text not null,
+  model text not null,
+  display_name text not null,
+  context_window integer,
+  input_cost_per_1m numeric,
+  output_cost_per_1m numeric,
+  capabilities text[] not null default '{}',
+  recommended_use text[] not null default '{}',
+  enabled boolean not null default true,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table if not exists public.model_policies (
   id uuid primary key default uuid_generate_v4(),
   owner_id uuid references public.users(id) on delete cascade,
   name text not null,
+  description text,
   agent_role text,
   task_type text,
   risk_level text,
@@ -277,20 +306,24 @@ create table if not exists public.model_policies (
   max_tokens integer not null default 2000,
   cost_level text not null default 'medium',
   enabled boolean not null default true,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
 );
 
 create table if not exists public.model_runs (
   id uuid primary key default uuid_generate_v4(),
   owner_id uuid references public.users(id) on delete cascade,
   agent_run_id uuid references public.agent_runs(id) on delete set null,
+  task_id uuid references public.tasks(id) on delete set null,
+  agent_id uuid references public.agents(id) on delete set null,
+  policy_name text,
   provider text not null,
   model text not null,
   input_tokens integer not null default 0,
   output_tokens integer not null default 0,
   estimated_cost numeric not null default 0,
   latency_ms integer not null default 0,
-  status text not null default 'succeeded',
+  status text not null default 'success',
   error text,
   created_at timestamptz not null default now()
 );
@@ -336,8 +369,10 @@ create index if not exists knowledge_sources_owner_type_idx on public.knowledge_
 create index if not exists agent_runs_owner_status_idx on public.agent_runs(owner_id, status);
 create index if not exists task_logs_task_created_idx on public.task_logs(task_id, created_at);
 create index if not exists quality_reviews_owner_status_idx on public.quality_reviews(owner_id, status);
+create index if not exists model_catalog_provider_model_idx on public.model_catalog(provider, model, enabled);
 create index if not exists model_policies_lookup_idx on public.model_policies(agent_role, task_type, risk_level, enabled);
 create index if not exists model_runs_agent_run_idx on public.model_runs(agent_run_id, created_at);
+create index if not exists model_runs_task_created_idx on public.model_runs(task_id, created_at);
 
 alter table public.users enable row level security;
 alter table public.agents enable row level security;
@@ -358,6 +393,7 @@ alter table public.agent_runs enable row level security;
 alter table public.task_logs enable row level security;
 alter table public.quality_reviews enable row level security;
 alter table public.model_providers enable row level security;
+alter table public.model_catalog enable row level security;
 alter table public.model_policies enable row level security;
 alter table public.model_runs enable row level security;
 alter table public.daily_reports enable row level security;
@@ -454,6 +490,9 @@ create policy "Owners manage quality reviews" on public.quality_reviews
   for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
 
 create policy "Owners manage model providers" on public.model_providers
+  for all using (owner_id is null or auth.uid() = owner_id) with check (owner_id is null or auth.uid() = owner_id);
+
+create policy "Owners manage model catalog" on public.model_catalog
   for all using (owner_id is null or auth.uid() = owner_id) with check (owner_id is null or auth.uid() = owner_id);
 
 create policy "Owners manage model policies" on public.model_policies

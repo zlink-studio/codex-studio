@@ -9,6 +9,7 @@ coverage
 *.tsbuildinfo
 tools/node
 tools/node20
+tools/openclaw-prefix
 tools/*.zip
 tools/*.log
 tools/*.err.log

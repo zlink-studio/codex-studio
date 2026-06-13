@@ -2,6 +2,7 @@ import { fail, ok, parseJson, resolveOwnerId } from "@/lib/api";
 import { resolveModelPolicy, runLLM } from "@/lib/llm/router";
 import { formatMemoriesForPrompt, proposeMemoryFromAgentRun, retrieveMemoryForCommand } from "@/lib/memory/service";
 import { agents as fallbackAgents } from "@/lib/mock-data";
+import { isDemoDataEnabled, setupRequiredPayload } from "@/lib/runtime";
 import { createSupabaseServerClient } from "@/lib/supabase";
 import type { Agent, ApprovalStatus, RiskLevel, TaskPriority } from "@/lib/types";
 
@@ -68,10 +69,12 @@ export async function POST(request: Request) {
         role: "system",
         content: [
           "你是一人公司的执行经理 Agent，负责把老板目标拆解成可执行任务。",
-          "只能使用 approved memories 作为正式上下文；不要把 pending_review 或 draft 记忆写进任务判断。",
+          "只能使用 approved memories 作为正式上下文；draft、pending_review、rejected 记忆不能影响正式判断。",
           "高风险任务包括报价、合同、付款、客户正式承诺、法律风险，必须标记 riskLevel=high 或 critical。",
-          "请只返回 JSON，格式：",
-          '{"summary":"...","tasks":[{"title":"...","description":"...","taskType":"content|social|data|table|simple|code|automation|general","agentRole":"leader|worker|reviewer","priority":"low|medium|high|urgent","riskLevel":"low|medium|high|critical","dueAt":null}],"longTermMemories":[{"title":"...","content":"...","summary":"...","type":"company|client|project|agent|sop|review","scope":"global|client|project|agent","tags":["..."],"reason":"...","riskLevel":"low|medium|high|critical"}]}',
+          "如果发现长期有效的新信息，只写入 longTermMemories，后续进入记忆审核队列，不要直接视为 approved。",
+          "只返回 JSON，不要输出 Markdown，不要解释。",
+          "JSON 格式：",
+          '{"summary":"...","tasks":[{"title":"...","description":"...","taskType":"content|social|data|table|simple|code|automation|general|long_document|contract","agentRole":"leader|worker|reviewer","priority":"low|medium|high|urgent","riskLevel":"low|medium|high|critical","dueAt":null}],"longTermMemories":[{"title":"...","content":"...","summary":"...","type":"company|client|project|agent|sop|review","scope":"global|client|project|agent","tags":["..."],"reason":"...","riskLevel":"low|medium|high|critical"}]}',
           "",
           "Approved memories:",
           formatMemoriesForPrompt(memories)
@@ -92,6 +95,7 @@ export async function POST(request: Request) {
   const tasks = normalizePlanTasks(plan.tasks.length ? plan.tasks : fallbackPlan(body.goal).tasks);
 
   if (!supabase || !ownerId) {
+    if (!isDemoDataEnabled()) return fail(setupRequiredPayload("command_center").message, 503);
     return ok(
       {
         goal: body.goal,
@@ -100,7 +104,8 @@ export async function POST(request: Request) {
         memoriesUsed: memories,
         modelRun: llmResult,
         persisted: false,
-        warning: llmResult.status === "failed" ? llmResult.error : undefined
+        warning: llmResult.status === "failed" ? llmResult.error : undefined,
+        manualBridgePrompt: getManualBridgePrompt(llmResult.raw)
       },
       { status: 201 }
     );
@@ -108,16 +113,17 @@ export async function POST(request: Request) {
 
   const startedAt = new Date().toISOString();
   const finishedAt = new Date().toISOString();
+  const leaderAgentId = isUuid(leaderAgent.id) ? leaderAgent.id : null;
   const { data: agentRun, error: agentRunError } = await supabase
     .from("agent_runs")
     .insert({
       owner_id: ownerId,
       task_id: null,
-      agent_id: isUuid(leaderAgent.id) ? leaderAgent.id : null,
+      agent_id: leaderAgentId,
       status: llmResult.status === "succeeded" ? "succeeded" : "failed",
       model: llmResult.model,
       input: { goal: body.goal, memory_ids: memories.map((memory) => memory.id), policy: policy.name },
-      output: { plan, raw: llmResult.content },
+      output: { plan, raw: llmResult.content, manual_bridge: getManualBridgePrompt(llmResult.raw) },
       prompt_tokens: llmResult.inputTokens,
       completion_tokens: llmResult.outputTokens,
       cost: llmResult.estimatedCost,
@@ -135,13 +141,15 @@ export async function POST(request: Request) {
     .insert({
       owner_id: ownerId,
       agent_run_id: agentRun.id,
+      agent_id: leaderAgentId,
+      policy_name: policy.name,
       provider: llmResult.provider,
       model: llmResult.model,
       input_tokens: llmResult.inputTokens,
       output_tokens: llmResult.outputTokens,
       estimated_cost: llmResult.estimatedCost,
       latency_ms: llmResult.latencyMs,
-      status: llmResult.status,
+      status: llmResult.status === "succeeded" ? "success" : "error",
       error: llmResult.error ?? null
     })
     .select("*")
@@ -163,8 +171,8 @@ export async function POST(request: Request) {
       priority: task.priority ?? "medium",
       risk_level: task.riskLevel ?? "low",
       approval_status: needsApproval ? "pending" : ("not_required" satisfies ApprovalStatus),
-      status: "todo",
-      board_status: "todo",
+      status: needsApproval ? "backlog" : "todo",
+      board_status: needsApproval ? "backlog" : "todo",
       review_status: "not_required",
       sort_order: index,
       due_at: task.dueAt ?? null,
@@ -203,6 +211,7 @@ export async function POST(request: Request) {
         goal: body.goal,
         memory_ids: memories.map((memory) => memory.id),
         model_run_id: modelRun.id,
+        model_policy: policy.name,
         model: llmResult.model,
         provider: llmResult.provider,
         estimated_cost: llmResult.estimatedCost,
@@ -227,7 +236,7 @@ export async function POST(request: Request) {
         confidence: 0.7,
         sourceId: agentRun.id,
         createdBy: "executive_agent",
-        proposedByAgentId: isUuid(leaderAgent.id) ? leaderAgent.id : null,
+        proposedByAgentId: leaderAgentId,
         reason: memory.reason ?? "Command Center generated a possible long-term memory.",
         riskLevel: memory.riskLevel ?? "medium"
       })
@@ -243,7 +252,8 @@ export async function POST(request: Request) {
       agentRun,
       modelRun,
       persisted: true,
-      warning: llmResult.status === "failed" ? llmResult.error : undefined
+      warning: llmResult.status === "failed" ? llmResult.error : undefined,
+      manualBridgePrompt: getManualBridgePrompt(llmResult.raw)
     },
     { status: 201 }
   );
@@ -272,6 +282,9 @@ async function loadLeaderAgent(ownerId?: string | null): Promise<Partial<Agent>>
         model: data.model,
         prompt: data.prompt,
         preferredModelPolicy: data.preferred_model_policy,
+        preferredProvider: data.preferred_provider,
+        preferredModel: data.preferred_model,
+        fallbackProvider: data.fallback_provider,
         fallbackModel: data.fallback_model
       }
     : fallbackAgents.find((agent) => agent.agentRole === "leader") ?? fallbackAgents[0];
@@ -295,16 +308,16 @@ function resolveAssignedAgentId(task: CommandPlanTask, agents: Array<Partial<Age
   if (task.assignedAgentId && agents.some((agent) => agent.id === task.assignedAgentId)) return task.assignedAgentId;
   const taskType = (task.taskType ?? "").toLowerCase();
   const role = task.agentRole ?? "worker";
-  const byRole = agents.find((agent) => agent.agentRole === role);
   const bySkill = agents.find((agent) => agent.skills?.some((skill) => taskType && skill.toLowerCase().includes(taskType)));
   const byDepartment = agents.find((agent) => {
     const department = String(agent.department ?? "").toLowerCase();
     return (
       (["content", "social"].includes(taskType) && department.includes("marketing")) ||
       (["automation", "code"].includes(taskType) && department.includes("operations")) ||
-      (["finance", "legal"].includes(taskType) && (department.includes("finance") || department.includes("legal")))
+      (["finance", "legal", "contract"].includes(taskType) && (department.includes("finance") || department.includes("legal")))
     );
   });
+  const byRole = agents.find((agent) => agent.agentRole === role);
   return bySkill?.id ?? byDepartment?.id ?? byRole?.id ?? agents[0]?.id ?? null;
 }
 
@@ -340,7 +353,7 @@ function fallbackPlan(goal: string): CommandPlan {
     tasks: [
       {
         title: "明确目标和验收标准",
-        description: `围绕「${goal}」整理成功标准、限制条件和需要老板确认的问题。`,
+        description: `围绕“${goal}”整理成功标准、限制条件和需要老板确认的问题。`,
         taskType: "simple",
         agentRole: "leader",
         priority: "high",
@@ -369,4 +382,12 @@ function fallbackPlan(goal: string): CommandPlan {
 
 function isUuid(value?: string | null) {
   return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value));
+}
+
+function getManualBridgePrompt(raw: unknown) {
+  if (raw && typeof raw === "object" && "prompt" in raw) {
+    const prompt = (raw as { prompt?: unknown }).prompt;
+    return typeof prompt === "string" ? prompt : null;
+  }
+  return null;
 }

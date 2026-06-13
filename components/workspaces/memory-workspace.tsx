@@ -26,15 +26,6 @@ import {
   normalizeProject,
   readApiData
 } from "@/lib/client-normalizers";
-import {
-  agents as fallbackAgents,
-  knowledgeSources as fallbackSources,
-  memories as fallbackMemories,
-  memoryAccessLogs as fallbackAccessLogs,
-  memoryCategories as fallbackCategories,
-  memoryRelations as fallbackRelations,
-  projects as fallbackProjects
-} from "@/lib/mock-data";
 import type { Agent, KnowledgeSource, Memory, MemoryAccessLog, MemoryCategory, MemoryRelation, Project } from "@/lib/types";
 
 type ReviewQueueRow = {
@@ -87,16 +78,16 @@ const initialSourceForm = {
 };
 
 export function MemoryWorkspace() {
-  const [items, setItems] = useState<Memory[]>(fallbackMemories);
-  const [categories, setCategories] = useState<MemoryCategory[]>(fallbackCategories);
-  const [sources, setSources] = useState<KnowledgeSource[]>(fallbackSources);
-  const [logs, setLogs] = useState<MemoryAccessLog[]>(fallbackAccessLogs);
-  const [relations, setRelations] = useState<MemoryRelation[]>(fallbackRelations);
+  const [items, setItems] = useState<Memory[]>([]);
+  const [categories, setCategories] = useState<MemoryCategory[]>([]);
+  const [sources, setSources] = useState<KnowledgeSource[]>([]);
+  const [logs, setLogs] = useState<MemoryAccessLog[]>([]);
+  const [relations, setRelations] = useState<MemoryRelation[]>([]);
   const [queue, setQueue] = useState<ReviewQueueRow[]>([]);
-  const [agents, setAgents] = useState<Agent[]>(fallbackAgents);
-  const [projects, setProjects] = useState<Project[]>(fallbackProjects);
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [selectedTree, setSelectedTree] = useState("all");
-  const [selectedMemoryId, setSelectedMemoryId] = useState(fallbackMemories[0]?.id ?? "");
+  const [selectedMemoryId, setSelectedMemoryId] = useState("");
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -105,7 +96,7 @@ export function MemoryWorkspace() {
   const [isEditing, setIsEditing] = useState(false);
   const [memoryForm, setMemoryForm] = useState(initialMemoryForm);
   const [sourceForm, setSourceForm] = useState(initialSourceForm);
-  const [message, setMessage] = useState("已加载本地示例数据");
+  const [message, setMessage] = useState("正在加载真实记忆库...");
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -149,13 +140,13 @@ export function MemoryWorkspace() {
     try {
       const [memoryRows, categoryRows, sourceRows, logRows, relationRows, queueRows, agentRows, projectRows] = await Promise.all([
         fetch("/api/memories").then((response) => readApiData<any[]>(response)),
-        fetch("/api/memory-categories").then((response) => readApiData<any[]>(response)).catch(() => fallbackCategories),
-        fetch("/api/knowledge-sources").then((response) => readApiData<any[]>(response)).catch(() => fallbackSources),
-        fetch("/api/memory-access-logs").then((response) => readApiData<any[]>(response)).catch(() => fallbackAccessLogs),
-        fetch("/api/memory-relations").then((response) => readApiData<any[]>(response)).catch(() => fallbackRelations),
+        fetch("/api/memory-categories").then((response) => readApiData<any[]>(response)).catch(() => []),
+        fetch("/api/knowledge-sources").then((response) => readApiData<any[]>(response)).catch(() => []),
+        fetch("/api/memory-access-logs").then((response) => readApiData<any[]>(response)).catch(() => []),
+        fetch("/api/memory-relations").then((response) => readApiData<any[]>(response)).catch(() => []),
         fetch("/api/memory-review-queue").then((response) => readApiData<ReviewQueueRow[]>(response)).catch(() => []),
-        fetch("/api/agents").then((response) => readApiData<any[]>(response)).catch(() => fallbackAgents),
-        fetch("/api/projects").then((response) => readApiData<any[]>(response)).catch(() => fallbackProjects)
+        fetch("/api/agents").then((response) => readApiData<any[]>(response)).catch(() => []),
+        fetch("/api/projects").then((response) => readApiData<any[]>(response)).catch(() => [])
       ]);
       const nextMemories = memoryRows.map(normalizeMemory);
       setItems(nextMemories);

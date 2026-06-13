@@ -1,5 +1,6 @@
 import { fail, ok, parseJson, resolveOwnerId } from "@/lib/api";
 import { memoryRelations } from "@/lib/mock-data";
+import { isDemoDataEnabled, setupRequiredPayload } from "@/lib/runtime";
 import { createSupabaseServerClient } from "@/lib/supabase";
 
 type RelationBody = {
@@ -20,7 +21,7 @@ export async function GET(request: Request) {
   const ownerId = resolveOwnerId(Object.fromEntries(searchParams.entries()));
   const memoryId = searchParams.get("memory_id");
   const supabase = createSupabaseServerClient();
-  if (!supabase) return ok(memoryId ? memoryRelations.filter((relation) => relation.memoryId === memoryId) : memoryRelations);
+  if (!supabase) return ok(isDemoDataEnabled() ? (memoryId ? memoryRelations.filter((relation) => relation.memoryId === memoryId) : memoryRelations) : []);
 
   let query = supabase.from("memory_relations").select("*").order("created_at", { ascending: false }).limit(100);
   if (ownerId) query = query.eq("owner_id", ownerId);
@@ -51,7 +52,10 @@ export async function POST(request: Request) {
   };
 
   const supabase = createSupabaseServerClient();
-  if (!supabase) return ok({ ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString() }, { status: 201 });
+  if (!supabase) {
+    if (isDemoDataEnabled()) return ok({ ...payload, id: crypto.randomUUID(), created_at: new Date().toISOString() }, { status: 201 });
+    return fail(setupRequiredPayload("memory_relations").message, 503);
+  }
 
   const { data, error } = await supabase.from("memory_relations").insert(payload).select("*").single();
   if (error) return fail(error.message, 500);

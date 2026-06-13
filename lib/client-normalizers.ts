@@ -1,4 +1,4 @@
-import type { Agent, KnowledgeSource, Memory, MemoryAccessLog, MemoryCategory, MemoryRelation, Project, Task } from "@/lib/types";
+import type { Agent, KnowledgeSource, Memory, MemoryAccessLog, MemoryCategory, MemoryRelation, ModelCatalogItem, ModelPolicy, ModelProvider, ModelRunSummary, Project, Task } from "@/lib/types";
 
 type AnyRow = Record<string, any>;
 
@@ -16,8 +16,15 @@ export function normalizeAgent(row: AnyRow): Agent {
     agentRole: row.agentRole ?? row.agent_role ?? "worker",
     skills: row.skills ?? [],
     workload: Number(row.workload ?? 0),
+    modelPolicyId: row.modelPolicyId ?? row.model_policy_id ?? null,
     preferredModelPolicy: row.preferredModelPolicy ?? row.preferred_model_policy ?? null,
+    preferredProvider: row.preferredProvider ?? row.preferred_provider ?? null,
+    preferredModel: row.preferredModel ?? row.preferred_model ?? null,
+    fallbackProvider: row.fallbackProvider ?? row.fallback_provider ?? null,
     fallbackModel: row.fallbackModel ?? row.fallback_model ?? null,
+    maxCostPerRun: row.maxCostPerRun ?? row.max_cost_per_run ?? null,
+    temperature: row.temperature ?? null,
+    maxTokens: row.maxTokens ?? row.max_tokens ?? null,
     currentFocus: row.currentFocus ?? row.current_focus ?? "",
     successRate: Number(row.successRate ?? row.success_rate ?? 0)
   };
@@ -146,6 +153,78 @@ export function normalizeKnowledgeSource(row: AnyRow): KnowledgeSource {
     metadata: row.metadata ?? {},
     createdAt: row.createdAt ?? row.created_at ?? undefined,
     updatedAt: row.updatedAt ?? row.updated_at ?? undefined
+  };
+}
+
+export function normalizeModelProvider(row: AnyRow): ModelProvider {
+  return {
+    id: row.id,
+    name: row.name ?? row.slug,
+    displayName: row.displayName ?? row.display_name ?? row.name,
+    baseUrl: row.baseUrl ?? row.base_url ?? null,
+    apiKeyEnv: row.apiKeyEnv ?? row.api_key_env ?? "",
+    enabled: Boolean(row.enabled ?? true),
+    status: row.status ?? "missing_key",
+    notes: row.notes ?? null,
+    lastCheckedAt: row.lastCheckedAt ?? row.last_checked_at ?? null,
+    createdAt: row.createdAt ?? row.created_at ?? undefined,
+    updatedAt: row.updatedAt ?? row.updated_at ?? undefined
+  };
+}
+
+export function normalizeModelCatalogItem(row: AnyRow): ModelCatalogItem {
+  return {
+    id: row.id,
+    provider: row.provider,
+    model: row.model,
+    displayName: row.displayName ?? row.display_name ?? row.model,
+    contextWindow: row.contextWindow ?? row.context_window ?? null,
+    inputCostPer1m: row.inputCostPer1m ?? row.input_cost_per_1m ?? null,
+    outputCostPer1m: row.outputCostPer1m ?? row.output_cost_per_1m ?? null,
+    capabilities: row.capabilities ?? [],
+    recommendedUse: row.recommendedUse ?? row.recommended_use ?? [],
+    enabled: Boolean(row.enabled ?? true),
+    notes: row.notes ?? null,
+    createdAt: row.createdAt ?? row.created_at ?? undefined,
+    updatedAt: row.updatedAt ?? row.updated_at ?? undefined
+  };
+}
+
+export function normalizeModelPolicy(row: AnyRow): ModelPolicy {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? null,
+    agentRole: row.agentRole ?? row.agent_role ?? null,
+    taskType: row.taskType ?? row.task_type ?? null,
+    riskLevel: row.riskLevel ?? row.risk_level ?? null,
+    primaryProvider: row.primaryProvider ?? row.primary_provider ?? "openai",
+    primaryModel: row.primaryModel ?? row.primary_model ?? "gpt-4o-mini",
+    fallbackProvider: row.fallbackProvider ?? row.fallback_provider ?? "openai",
+    fallbackModel: row.fallbackModel ?? row.fallback_model ?? "gpt-4o-mini",
+    temperature: Number(row.temperature ?? 0.2),
+    maxTokens: Number(row.maxTokens ?? row.max_tokens ?? 1600),
+    costLevel: row.costLevel ?? row.cost_level ?? "low",
+    enabled: Boolean(row.enabled ?? true)
+  };
+}
+
+export function normalizeModelRun(row: AnyRow): ModelRunSummary {
+  return {
+    id: row.id,
+    agentRunId: row.agentRunId ?? row.agent_run_id ?? null,
+    taskId: row.taskId ?? row.task_id ?? null,
+    agentId: row.agentId ?? row.agent_id ?? null,
+    policyName: row.policyName ?? row.policy_name ?? null,
+    provider: row.provider,
+    model: row.model,
+    inputTokens: Number(row.inputTokens ?? row.input_tokens ?? 0),
+    outputTokens: Number(row.outputTokens ?? row.output_tokens ?? 0),
+    estimatedCost: Number(row.estimatedCost ?? row.estimated_cost ?? 0),
+    latencyMs: Number(row.latencyMs ?? row.latency_ms ?? 0),
+    status: row.status ?? "success",
+    error: row.error ?? null,
+    createdAt: row.createdAt ?? row.created_at ?? undefined
   };
 }
 

@@ -1,5 +1,6 @@
 import { fail, ok, resolveOwnerId } from "@/lib/api";
 import { memoryAccessLogs } from "@/lib/mock-data";
+import { isDemoDataEnabled } from "@/lib/runtime";
 import { createSupabaseServerClient } from "@/lib/supabase";
 
 export async function GET(request: Request) {
@@ -7,7 +8,7 @@ export async function GET(request: Request) {
   const ownerId = resolveOwnerId(Object.fromEntries(searchParams.entries()));
   const memoryId = searchParams.get("memory_id");
   const supabase = createSupabaseServerClient();
-  if (!supabase) return ok(memoryId ? memoryAccessLogs.filter((log) => log.memoryId === memoryId) : memoryAccessLogs);
+  if (!supabase) return ok(isDemoDataEnabled() ? (memoryId ? memoryAccessLogs.filter((log) => log.memoryId === memoryId) : memoryAccessLogs) : []);
 
   let query = supabase
     .from("memory_access_logs")

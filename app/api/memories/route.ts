@@ -1,6 +1,7 @@
 import { fail, ok, parseJson, resolveOwnerId } from "@/lib/api";
 import { archiveMemory, approveMemory, createMemoryDraft, rejectMemory } from "@/lib/memory/service";
 import { memories } from "@/lib/mock-data";
+import { isDemoDataEnabled, setupRequiredPayload } from "@/lib/runtime";
 import { createSupabaseServerClient } from "@/lib/supabase";
 import type { MemoryScope, MemorySourceType, MemoryType, RiskLevel } from "@/lib/types";
 
@@ -51,6 +52,7 @@ export async function GET(request: Request) {
   const supabase = createSupabaseServerClient();
 
   if (!supabase) {
+    if (!isDemoDataEnabled()) return ok([]);
     return ok(
       memories
         .filter((memory) => !type || memory.type === type)
@@ -83,6 +85,7 @@ export async function POST(request: Request) {
   if (!body?.title || !body?.type || !body?.content) return fail("title, type and content are required");
 
   const ownerId = resolveOwnerId(body);
+  if (!createSupabaseServerClient() && !isDemoDataEnabled()) return fail(setupRequiredPayload("memories").message, 503);
   const memory = await createMemoryDraft({
     ownerId,
     title: body.title,
@@ -105,6 +108,7 @@ export async function POST(request: Request) {
     riskLevel: body.risk_level ?? body.riskLevel
   });
 
+  if (!memory && !isDemoDataEnabled()) return fail(setupRequiredPayload("memories").message, 503);
   return ok(memory ?? { ...body, id: crypto.randomUUID() }, { status: 201 });
 }
 
@@ -119,7 +123,10 @@ export async function PATCH(request: Request) {
   if (body.action === "archive") return ok(await archiveMemory(memoryId, ownerId));
 
   const supabase = createSupabaseServerClient();
-  if (!supabase || !ownerId) return ok({ ...body, updated_at: new Date().toISOString() });
+  if (!supabase || !ownerId) {
+    if (isDemoDataEnabled()) return ok({ ...body, updated_at: new Date().toISOString() });
+    return fail(setupRequiredPayload("memories").message, 503);
+  }
 
   const patch = {
     title: body.title,
