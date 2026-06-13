@@ -41,10 +41,10 @@ DEMO_OWNER_ID
 If you prefer the encrypted bundle, run:
 
 ```bash
-pwsh ./tools/import-env.ps1 -Force
+npm run env:import -- .env.local.enc .env.local --force
 ```
 
-Only use that if PowerShell is available in the codespace.
+Enter the encryption password you created on the first machine.
 
 ## Cost control
 
