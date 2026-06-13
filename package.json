@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:codespaces": "next dev -H 0.0.0.0 -p 3000",
+    "env:import": "node tools/import-env.mjs",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
