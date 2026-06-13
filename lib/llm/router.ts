@@ -34,6 +34,7 @@ export const defaultModelPolicies: ModelPolicy[] = [
   policy("business_english", null, "business_english", null, "openai", "gpt-4o-mini", 0.35, 2200, "medium", "商务英文、跨境邮件和正式表达。"),
   policy("codex_local_default", null, null, null, "codex_local", "openai/gpt-5.5", 0.2, 3000, "low", "本机 Codex/OpenClaw OAuth 网关模式，不使用 OpenAI API Key。"),
   policy("gemini_free", null, "data", null, "gemini", "gemini-3.1-flash-lite", 0.2, 3000, "low", "Gemini API Free Tier 友好策略，适合资料整理、长上下文和低成本任务。"),
+  policy("qwen_free", null, "simple", null, "qwen", "qwen-plus", 0.2, 3000, "low", "通义千问免费额度友好策略，适合轻量执行、资料整理和中文任务。"),
   policy("manual_bridge", null, null, null, "manual_bridge", "chatgpt-web-manual", 0.2, 3000, "low", "手动复制到 ChatGPT 网页并粘贴 JSON 结果。")
 ];
 
@@ -86,6 +87,16 @@ export function resolveModelPolicy(context: ModelRoutingContext): ResolvedModelP
     (taskType && ["code", "automation"].includes(taskType) ? defaultModelPolicies.find((item) => item.name === "coding") : undefined) ||
     (taskType && ["long_document", "contract"].includes(taskType) ? defaultModelPolicies.find((item) => item.name === "long_context") : undefined) ||
     defaultModelPolicies.find((item) => item.name === "low_cost")!;
+
+  if (process.env.DEFAULT_LLM_PROVIDER === "qwen" && selected.primaryProvider === "openai") {
+    selected = {
+      ...selected,
+      primaryProvider: "qwen",
+      primaryModel: defaultQwenModelForPolicy(selected.name),
+      fallbackProvider: "manual_bridge",
+      fallbackModel: "chatgpt-web-manual"
+    };
+  }
 
   if (!process.env.OPENAI_API_KEY && isCodexLocalConfigured() && selected.primaryProvider === "openai") {
     selected = {
@@ -146,6 +157,7 @@ function chooseDefaultProvider(): ModelProviderName {
   if (process.env.DEFAULT_LLM_PROVIDER) return process.env.DEFAULT_LLM_PROVIDER as ModelProviderName;
   if (process.env.OPENAI_API_KEY) return "openai";
   if (isCodexLocalConfigured()) return "codex_local";
+  if (process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY) return "qwen";
   if (process.env.GEMINI_API_KEY) return "gemini";
   return "manual_bridge";
 }
@@ -154,6 +166,7 @@ function defaultModelForProvider(providerName: ModelProviderName) {
   if (providerName === "codex_local") return process.env.CODEX_LOCAL_MODEL || "openai/gpt-5.5";
   if (providerName === "manual_bridge") return "chatgpt-web-manual";
   if (providerName === "gemini") return process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
+  if (providerName === "qwen") return process.env.QWEN_MODEL || "qwen-plus";
   return "gpt-4o-mini";
 }
 
@@ -169,4 +182,11 @@ function normalizeCodexModel(model: string) {
   if (model.startsWith("openai/")) return model;
   if (model.startsWith("codex/")) return model.replace(/^codex\//, "openai/");
   return `openai/${model}`;
+}
+
+function defaultQwenModelForPolicy(policyName: string) {
+  if (process.env.QWEN_MODEL) return process.env.QWEN_MODEL;
+  if (policyName === "strong_reasoning" || policyName === "review_policy" || policyName === "coding" || policyName === "long_context") return "qwen-max";
+  if (policyName === "low_cost") return "qwen-turbo";
+  return "qwen-plus";
 }

@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     });
   }
 
-  if (provider !== "openai" && provider !== "codex_local" && provider !== "gemini") {
+  if (provider !== "openai" && provider !== "codex_local" && provider !== "gemini" && provider !== "qwen") {
     return ok({
       provider,
       model,
@@ -39,10 +39,12 @@ export async function POST(request: Request) {
       status,
       message:
         provider === "codex_local"
-          ? "CODEX_LOCAL_BASE_URL or OPENCLAW_GATEWAY_URL is not configured."
-          : provider === "gemini"
-            ? "GEMINI_API_KEY is not configured."
-          : "OPENAI_API_KEY is not configured."
+            ? "CODEX_LOCAL_BASE_URL or OPENCLAW_GATEWAY_URL is not configured."
+            : provider === "gemini"
+              ? "GEMINI_API_KEY is not configured."
+              : provider === "qwen"
+                ? "QWEN_API_KEY or DASHSCOPE_API_KEY is not configured."
+                : "OPENAI_API_KEY is not configured."
     });
   }
 
@@ -72,5 +74,6 @@ function defaultTestModel(provider: ModelProviderName) {
   if (provider === "manual_bridge") return "chatgpt-web-manual";
   if (provider === "openai") return "gpt-4o-mini";
   if (provider === "gemini") return process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
+  if (provider === "qwen") return process.env.QWEN_MODEL || "qwen-plus";
   return "placeholder";
 }

@@ -1,5 +1,6 @@
 import { isCodexLocalConfigured } from "@/lib/llm/providers/codex-local";
 import { isGeminiConfigured } from "@/lib/llm/providers/gemini";
+import { isQwenConfigured } from "@/lib/llm/providers/qwen";
 import { defaultModelPolicies } from "@/lib/llm/router";
 import type { ModelCatalogItem, ModelPolicy, ModelProvider, ModelProviderName, ModelProviderStatus } from "@/lib/types";
 
@@ -14,7 +15,7 @@ export const providerSeeds: ProviderSeed[] = [
   provider("litellm", "LiteLLM", "LITELLM_API_KEY", false, null, "占位：后续接入企业自建模型网关。"),
   provider("anthropic", "Anthropic Claude", "ANTHROPIC_API_KEY", false, "https://api.anthropic.com", "占位：后续接 Claude。"),
   provider("deepseek", "DeepSeek", "DEEPSEEK_API_KEY", false, "https://api.deepseek.com", "占位：后续接 DeepSeek。"),
-  provider("qwen", "Qwen", "QWEN_API_KEY", false, "https://dashscope.aliyuncs.com", "占位：后续接通义千问。"),
+  provider("qwen", "Qwen / 通义千问", "QWEN_API_KEY", true, "https://dashscope.aliyuncs.com/compatible-mode/v1", "真实接入：通义千问 DashScope OpenAI 兼容接口。"),
   provider("kimi", "Kimi", "KIMI_API_KEY", false, "https://api.moonshot.cn", "占位：后续接 Kimi。")
 ];
 
@@ -30,7 +31,9 @@ export const modelCatalogSeeds: ModelCatalogItem[] = [
   catalog("litellm", "router/default", "LiteLLM Default", null, null, null, ["chat", "json"], ["future_gateway"], false, "占位 adapter"),
   catalog("anthropic", "claude-placeholder", "Claude Placeholder", null, null, null, ["chat", "long_context"], ["future_long_context"], false, "占位 adapter"),
   catalog("deepseek", "deepseek-placeholder", "DeepSeek Placeholder", null, null, null, ["chat"], ["future_coding_cost"], false, "占位 adapter"),
-  catalog("qwen", "qwen-placeholder", "Qwen Placeholder", null, null, null, ["chat"], ["future_china_stack"], false, "占位 adapter"),
+  catalog("qwen", "qwen-turbo", "Qwen Turbo", 1000000, 0.3, 0.6, ["chat", "json", "long_context"], ["low_cost", "simple", "data"], true, "通义千问低成本模型，适合批量轻任务"),
+  catalog("qwen", "qwen-plus", "Qwen Plus", 1000000, 0.8, 2, ["chat", "json", "long_context"], ["low_cost", "content", "business_english", "data"], true, "通义千问默认均衡模型"),
+  catalog("qwen", "qwen-max", "Qwen Max", 1000000, 2.4, 9.6, ["chat", "json", "long_context"], ["strong_reasoning", "review_policy"], true, "通义千问更强模型，适合高风险规划和审核"),
   catalog("kimi", "kimi-placeholder", "Kimi Placeholder", null, null, null, ["chat", "long_context"], ["future_china_long_context"], false, "占位 adapter")
 ];
 
@@ -52,6 +55,7 @@ export function getProviderStatus(name: ModelProviderName, enabled = true): Mode
   if (name === "manual_bridge") return process.env.LLM_NO_KEY_MODE === "manual_bridge" ? "configured" : "missing_key";
   if (name === "codex_local") return isCodexLocalConfigured() ? "configured" : "missing_key";
   if (name === "gemini") return isGeminiConfigured() ? "configured" : "missing_key";
+  if (name === "qwen") return isQwenConfigured() ? "configured" : "missing_key";
 
   const seed = providerSeeds.find((item) => item.name === name);
   if (!seed) return "error";
