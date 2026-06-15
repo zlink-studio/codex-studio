@@ -1,5 +1,5 @@
 import { fail, ok, parseJson } from "@/lib/api";
-import { createProjectFromGoal, createTasksForProject } from "@/lib/workflow-engine";
+import { createProjectFromGoal, createTasksForProject, runProjectCycle } from "@/lib/workflow-engine";
 
 type CommandBody = {
   goal?: string;
@@ -23,6 +23,7 @@ export async function POST(request: Request) {
       project,
       goal
     });
+    const autoRuns = createdTasks.length ? await runProjectCycle(project.id, 3) : [];
 
     return ok(
       {
@@ -32,7 +33,8 @@ export async function POST(request: Request) {
         tasks: createdTasks,
         suggested_agents: suggestedAgents,
         risks,
-        next_action: nextAction
+        next_action: autoRuns.length ? "首轮任务已自动执行，去项目详情查看结果、日志和交付物。" : nextAction,
+        auto_executed_runs: autoRuns
       },
       { status: 201 }
     );

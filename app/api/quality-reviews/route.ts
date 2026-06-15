@@ -48,13 +48,11 @@ export async function PATCH(request: Request) {
   const reviewStatus =
     status === "request_changes"
       ? "rejected"
-      : status === "require_boss_approval"
-        ? "pending"
-        : status === "reject"
-          ? "rejected"
-          : status === "approved"
-            ? "approved"
-            : status;
+      : status === "reject"
+        ? "rejected"
+        : status === "approved" || status === "require_boss_approval"
+          ? "approved"
+          : status;
 
   const updated = await patchCollectionItem<any>("quality-reviews", review.id, {
     status: reviewStatus,
@@ -73,6 +71,8 @@ export async function PATCH(request: Request) {
       status: "done",
       board_status: "done",
       review_status: "approved",
+      approval_status: "not_required",
+      approval_required: false,
       updated_at: new Date().toISOString()
     };
     for (const deliverable of deliverables.filter((item) => item.task_id === taskId)) {
@@ -86,41 +86,34 @@ export async function PATCH(request: Request) {
       status: "in_progress",
       board_status: "in_progress",
       review_status: "rejected",
+      approval_status: "not_required",
+      approval_required: false,
       updated_at: new Date().toISOString()
     };
     projectEventTitle = "复核要求修改";
-    projectEventDescription = `${task.title} 被打回，需继续修改。`;
+    projectEventDescription = `${task.title} 被打回继续修改。`;
   } else if (status === "require_boss_approval") {
     taskPatch = {
-      status: "waiting_boss_approval",
-      board_status: "waiting_boss_approval",
-      approval_status: "pending",
+      status: "review",
+      board_status: "review",
       review_status: "pending",
+      approval_status: "not_required",
+      approval_required: false,
       updated_at: new Date().toISOString()
     };
-    projectEventTitle = "复核转老板审批";
-    projectEventDescription = `${task.title} 复核后需要老板进一步确认。`;
-    const approvals = await readCollection<any>("approvals");
-    const existing = approvals.find((item) => item.task_id === taskId && item.status === "pending");
-    if (!existing) {
-      await appendCollectionItem("approvals", {
-        id: crypto.randomUUID(),
-        task_id: taskId,
-        status: "pending",
-        decision_note: "Review Gate 要求老板进一步审批。",
-        created_at: new Date().toISOString(),
-        decided_at: null
-      });
-    }
+    projectEventTitle = "复核继续推进";
+    projectEventDescription = `${task.title} 保留在 Review 阶段继续处理，不再等待老板审批。`;
   } else {
     taskPatch = {
       status: "blocked",
       board_status: "blocked",
       review_status: "rejected",
+      approval_status: "not_required",
+      approval_required: false,
       updated_at: new Date().toISOString()
     };
     projectEventTitle = "复核拒绝";
-    projectEventDescription = `${task.title} 未通过复核，已阻塞。`;
+    projectEventDescription = `${task.title} 未通过复核，已转为阻塞。`;
   }
 
   const updatedTask = await patchCollectionItem<any>("tasks", taskId, taskPatch);
@@ -130,7 +123,7 @@ export async function PATCH(request: Request) {
     agent_id: task.assigned_agent_id ?? null,
     run_id: null,
     type: "review",
-    content: `${projectEventTitle}：${body.notes ?? ""}`.trim(),
+    content: `${projectEventTitle}：${String(body.notes ?? "")}`.trim(),
     metadata: {
       review_status: status
     },

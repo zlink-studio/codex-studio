@@ -11,7 +11,7 @@
     "start": "next start",
     "start:clean": "powershell -ExecutionPolicy Bypass -File ./tools/restart-clean.ps1 -Mode prod -Port 3200",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "next build && tsc --noEmit"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.4",

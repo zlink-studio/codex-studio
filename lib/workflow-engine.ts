@@ -185,9 +185,11 @@ export async function createTasksForProject(input: {
   for (let index = 0; index < taskDrafts.length; index += 1) {
     const draft = taskDrafts[index];
     const assignedAgent = pickAgentForRole(draft.assigned_agent_role, agents, draft.suggested_skills);
+    const selectedSkillRows = skills.filter((skill) => draft.suggested_skills.includes(skill.slug));
     const now = new Date().toISOString();
-    const approvalRequired =
-      draft.approval_required || draft.risk_level === "high" || draft.risk_level === "critical";
+    const requestedStatus = normalizeTaskStatus(draft.status);
+    const initialStatus = requestedStatus === "waiting_boss_approval" ? "todo" : requestedStatus;
+    const hasExternalActionSkill = selectedSkillRows.some(isExternalActionSkill);
     const task = {
       id: crypto.randomUUID(),
       project_id: input.project.id,
@@ -200,10 +202,10 @@ export async function createTasksForProject(input: {
       model_policy: draft.model_policy,
       priority: draft.priority,
       risk_level: draft.risk_level,
-      status: approvalRequired ? "waiting_boss_approval" : draft.status,
-      board_status: approvalRequired ? "waiting_boss_approval" : draft.status,
-      approval_status: approvalRequired ? "pending" : "not_required",
-      approval_required: approvalRequired,
+      status: initialStatus,
+      board_status: initialStatus,
+      approval_status: "not_required",
+      approval_required: false,
       review_status: "not_required",
       input_requirements: draft.input_requirements,
       output_requirements: draft.output_requirements,
@@ -217,24 +219,8 @@ export async function createTasksForProject(input: {
     await appendCollectionItem("tasks", task);
     createdTasks.push(task);
     if (assignedAgent?.id) suggestedAgents.add(assignedAgent.id);
-    if (approvalRequired) {
-      risks.add(`${task.title} 需要老板审批`);
-      await appendCollectionItem("approvals", {
-        id: crypto.randomUUID(),
-        task_id: task.id,
-        status: "pending",
-        decision_note: "任务涉及高风险或 action skill，等待老板审批。",
-        created_at: now,
-        decided_at: null
-      });
-      await appendProjectLog({
-        projectId: input.project.id,
-        eventType: "boss_approval_required",
-        title: "任务等待老板审批",
-        description: `${task.title} 涉及高风险或 action skill，已挂起。`,
-        relatedTaskId: task.id,
-        relatedAgentId: assignedAgent?.id ?? null
-      });
+    if (draft.risk_level === "high" || draft.risk_level === "critical" || hasExternalActionSkill) {
+      risks.add(`${task.title} is high-risk; the system will still execute automatically and keep external actions in suggestion mode.`);
     }
 
     await appendProjectLog({
@@ -267,9 +253,7 @@ export async function createTasksForProject(input: {
     createdTasks,
     suggestedAgents: Array.from(suggestedAgents),
     risks: Array.from(risks),
-    nextAction: createdTasks.some((task) => task.approval_status === "pending")
-      ? "先审批高风险任务，再执行下一轮。"
-      : "可以直接运行下一条任务。"
+    nextAction: "The system will immediately execute the first cycle and write logs, results, and deliverables back to the project."
   };
 }
 
@@ -403,12 +387,8 @@ export async function executeAgentRun(taskId: string, preferredAgentId?: string 
   });
 
   const parsed = parseAgentResponse(llmResult.content, task, project, assignedAgent, selectedSkillRows);
-  const hasActionSkill = selectedSkillRows.some((skill) => skill.skill_type === "action");
-  const requiresBossApproval =
-    hasActionSkill ||
-    task.risk_level === "high" ||
-    task.risk_level === "critical" ||
-    Boolean(task.approval_required);
+  const hasActionSkill = selectedSkillRows.some(isExternalActionSkill);
+  const shouldHoldExternalAction = hasActionSkill || Boolean(parsed.needs_boss_approval);
 
   const finishedAt = new Date().toISOString();
   const agentRunStatus = llmResult.status === "failed" ? "succeeded" : "succeeded";
@@ -478,13 +458,13 @@ export async function executeAgentRun(taskId: string, preferredAgentId?: string 
       title: item.title,
       type: item.type,
       content: item.content,
-      status: requiresBossApproval ? "review" : "draft"
+      status: shouldHoldExternalAction ? "review" : "draft"
     });
     deliverables.push(deliverable);
   }
 
-  const nextStatus = requiresBossApproval ? "waiting_boss_approval" : "review";
-  const nextApproval = requiresBossApproval ? "pending" : "not_required";
+  const nextStatus = "review";
+  const nextApproval = "not_required";
   const taskPatch = {
     assigned_agent_id: assignedAgent.id,
     model_policy: selectedPolicy.name,
@@ -493,7 +473,8 @@ export async function executeAgentRun(taskId: string, preferredAgentId?: string 
     status: nextStatus,
     board_status: nextStatus,
     approval_status: nextApproval,
-    review_status: requiresBossApproval ? "not_required" : "pending",
+    review_status: "pending",
+    approval_required: false,
     used_memory_ids: approvedMemories.map((memory) => memory.id),
     updated_at: finishedAt
   };
@@ -529,16 +510,14 @@ export async function executeAgentRun(taskId: string, preferredAgentId?: string 
     created_at: finishedAt
   };
   await appendCollectionItem("task-logs", resultLog);
-
-  if (requiresBossApproval) {
-    await ensurePendingApproval(task.id);
+  if (shouldHoldExternalAction) {
     await appendCollectionItem("task-logs", {
       id: crypto.randomUUID(),
       task_id: task.id,
       agent_id: assignedAgent.id,
       run_id: agentRun.id,
       type: "approval",
-      content: "本轮执行涉及高风险或 action skill，已转入老板审批。",
+      content: "This run used action skills in suggestion mode only; no external action was executed.",
       metadata: {
         deliverable_ids: deliverables.map((item) => item.id)
       },
@@ -547,9 +526,9 @@ export async function executeAgentRun(taskId: string, preferredAgentId?: string 
     if (project?.id) {
       await appendProjectLog({
         projectId: project.id,
-        eventType: "boss_approval_required",
-        title: "等待老板审批",
-        description: `${task.title} 已生成结果，但需要老板确认后才能继续。`,
+        eventType: "task_completed",
+        title: "Task moved to review",
+        description: `${task.title} produced deliverables and kept external actions in suggestion mode.`,
         relatedTaskId: task.id,
         relatedAgentId: assignedAgent.id,
         relatedDeliverableId: deliverables[0]?.id ?? null
@@ -577,8 +556,8 @@ export async function executeAgentRun(taskId: string, preferredAgentId?: string 
     skillRuns: skillRunRows,
     log: resultLog,
     deliverables,
-    warning: hasActionSkill
-      ? "本次命中了 action skill，系统仅生成建议和交付物草稿，不会自动执行外部动作。"
+    warning: shouldHoldExternalAction
+      ? "This run included external-action skills, so the system produced results and drafts but did not directly publish, send, or mutate external systems."
       : undefined
   };
 }
@@ -605,8 +584,8 @@ export async function runProjectCycle(projectId: string, limit = 3) {
   await appendProjectLog({
     projectId,
     eventType: "task_started",
-    title: "项目执行周期已运行",
-    description: `本轮共执行 ${results.length} 条任务。`
+    title: "?????????",
+    description: `????? ${results.length} ????`
   });
   return results;
 }
@@ -1086,6 +1065,10 @@ function normalizeTaskType(skillSlug?: string) {
   if (skillSlug.includes("content")) return "content";
   if (skillSlug.includes("implementation") || skillSlug.includes("code")) return "code";
   return "general";
+}
+
+function isExternalActionSkill(skill: AnyRow) {
+  return skill.skill_type === "action";
 }
 
 function inferDeliverableType(taskType?: string): DeliverableType {
