@@ -1,22 +1,33 @@
-import { fail, ok, resolveOwnerId } from "@/lib/api";
-import { createSupabaseServerClient } from "@/lib/supabase";
+import { ok } from "@/lib/api";
+import { readCollection } from "@/lib/local-store";
+
+export const dynamic = "force-dynamic";
+
+type ModelRunRow = {
+  id: string;
+  agent_run_id?: string | null;
+  task_id?: string | null;
+  agent_id?: string | null;
+  provider: string;
+  model: string;
+  input_tokens?: number;
+  output_tokens?: number;
+  estimated_cost?: number;
+  latency_ms?: number;
+  status?: string;
+  error?: string | null;
+  created_at: string;
+};
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const ownerId = resolveOwnerId(Object.fromEntries(searchParams.entries()));
   const agentRunId = searchParams.get("agent_run_id");
   const taskId = searchParams.get("task_id");
   const agentId = searchParams.get("agent_id");
-  const supabase = createSupabaseServerClient();
-  if (!supabase) return ok([]);
 
-  let query = supabase.from("model_runs").select("*").order("created_at", { ascending: false }).limit(100);
-  if (ownerId) query = query.eq("owner_id", ownerId);
-  if (agentRunId) query = query.eq("agent_run_id", agentRunId);
-  if (taskId) query = query.eq("task_id", taskId);
-  if (agentId) query = query.eq("agent_id", agentId);
-
-  const { data, error } = await query;
-  if (error) return fail(error.message, 500);
-  return ok(data ?? []);
+  let rows = await readCollection<ModelRunRow>("model-runs");
+  if (agentRunId) rows = rows.filter((row) => row.agent_run_id === agentRunId);
+  if (taskId) rows = rows.filter((row) => row.task_id === taskId);
+  if (agentId) rows = rows.filter((row) => row.agent_id === agentId);
+  return ok(rows);
 }

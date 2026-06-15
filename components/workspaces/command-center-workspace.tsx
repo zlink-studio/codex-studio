@@ -1,47 +1,47 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { FormEvent, ReactNode } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Bot, ClipboardCheck, Database, Send, Sparkles, Workflow } from "lucide-react";
+import { ArrowRight, Bot, ClipboardCheck, Database, Send, ShieldAlert, Workflow } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Panel } from "@/components/panel";
 import { StatusBadge } from "@/components/status-badge";
 import { normalizeAgent, normalizeProject, normalizeTask, readApiData } from "@/lib/client-normalizers";
-import { agents as fallbackAgents } from "@/lib/mock-data";
-import type { Agent, Memory, ModelRunSummary, Project, Task } from "@/lib/types";
+import type { Agent, Project, Task } from "@/lib/types";
 
 type CommandResponse = {
-  goal: string;
-  summary?: string | null;
+  project: any;
+  brief: {
+    project_name: string;
+    client_name: string;
+    objective: string;
+    client_profile: string;
+    brief: string;
+    risk_level: string;
+    due_date?: string | null;
+  };
   tasks: any[];
-  memoriesUsed?: Memory[];
-  agentRun?: { id: string; status?: string; model?: string | null; error?: string | null };
-  modelRun?: ModelRunSummary;
-  persisted: boolean;
-  warning?: string;
-  manualBridgePrompt?: string | null;
+  created_tasks: any[];
+  suggested_agents: string[];
+  risks: string[];
+  next_action: string;
 };
 
 const examples = [
-  "把本周客户交付拆成可执行任务，并标记报价、合同和客户承诺风险。",
-  "为新产品发布准备 7 天内容计划、销售跟进任务和日报检查点。",
-  "复盘本月经营数据，找出现金流、交付和获客的三个优先改进动作。"
+  "做一个可跑通的 AI 外贸 B2B 自动建站 MVP，并先推进第一轮任务执行。",
+  "围绕当前项目拆出可执行任务，自动执行低风险部分，把高风险事项挂老板审批。",
+  "把一个新客户项目从 brief、任务拆解、执行到交付物输出全部走一遍。"
 ];
 
 export function CommandCenterWorkspace() {
-  const [agents, setAgents] = useState<Agent[]>(fallbackAgents);
+  const [agents, setAgents] = useState<Agent[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [drafts, setDrafts] = useState<Task[]>([]);
   const [projectId, setProjectId] = useState("");
   const [goal, setGoal] = useState("");
-  const [summary, setSummary] = useState("");
-  const [memoriesUsed, setMemoriesUsed] = useState<Memory[]>([]);
-  const [modelRun, setModelRun] = useState<ModelRunSummary | null>(null);
-  const [agentRunStatus, setAgentRunStatus] = useState("");
-  const [message, setMessage] = useState("等待老板输入目标");
-  const [manualPrompt, setManualPrompt] = useState<string | null>(null);
+  const [result, setResult] = useState<CommandResponse | null>(null);
+  const [message, setMessage] = useState("等待老板下达目标。");
   const [isRunning, setIsRunning] = useState(false);
-  const [hasResult, setHasResult] = useState(false);
 
   useEffect(() => {
     void loadContext();
@@ -51,35 +51,20 @@ export function CommandCenterWorkspace() {
     try {
       const [agentRows, projectRows] = await Promise.all([
         fetch("/api/agents").then((response) => readApiData<any[]>(response)),
-        fetch("/api/projects").then((response) => readApiData<any[]>(response)).catch(() => [])
+        fetch("/api/projects").then((response) => readApiData<any[]>(response))
       ]);
       setAgents(agentRows.map(normalizeAgent));
       setProjects(projectRows.map(normalizeProject));
-    } catch {
-      setAgents(fallbackAgents);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "加载上下文失败");
     }
   }
-
-  const executive = agents.find((agent) => agent.agentRole === "leader" || agent.department === "Executive") ?? agents[0];
-  const pendingApprovalCount = useMemo(
-    () => drafts.filter((task) => task.approvalStatus === "pending").length,
-    [drafts]
-  );
-  const highRiskCount = useMemo(
-    () => drafts.filter((task) => task.riskLevel === "high" || task.riskLevel === "critical").length,
-    [drafts]
-  );
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsRunning(true);
-    setHasResult(false);
-    setManualPrompt(null);
-    setSummary("");
-    setMemoriesUsed([]);
-    setModelRun(null);
-    setAgentRunStatus("");
-    setMessage("执行经理正在拆解任务...");
+    setResult(null);
+    setMessage("正在生成项目 brief、创建任务并写入执行链路...");
 
     try {
       const data = await readApiData<CommandResponse>(
@@ -92,72 +77,40 @@ export function CommandCenterWorkspace() {
           })
         })
       );
-
-      const nextTasks = data.tasks.map(normalizeTask);
-      setDrafts(nextTasks);
-      setSummary(data.summary ?? "");
-      setMemoriesUsed(data.memoriesUsed ?? []);
-      setModelRun(data.modelRun ?? null);
-      setAgentRunStatus(data.agentRun?.status ?? "");
-      setManualPrompt(data.manualBridgePrompt ?? null);
-      setHasResult(true);
-
-      if (data.warning) {
-        setMessage(`已使用降级方案：${data.warning}`);
-      } else if (data.persisted) {
-        setMessage(`已写入 ${nextTasks.length} 个任务到 Tasks`);
-      } else {
-        setMessage(`已生成 ${nextTasks.length} 个任务草稿`);
-      }
+      setResult(data);
+      setMessage(`已创建 ${data.created_tasks.length} 条任务。下一步：${data.next_action}`);
+      await loadContext();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "拆解失败");
+      setMessage(error instanceof Error ? error.message : "执行失败");
     } finally {
       setIsRunning(false);
     }
-  }
-
-  async function triggerN8n() {
-    setMessage("正在触发 n8n...");
-    try {
-      const data = await readApiData<{ triggered: boolean; reason?: string }>(
-        await fetch("/api/n8n/trigger", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ command: goal || "manual-trigger", tasks: drafts })
-        })
-      );
-      setMessage(data.triggered ? "n8n 已触发" : data.reason ?? "n8n 未配置");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "触发失败");
-    }
-  }
-
-  async function copyManualPrompt() {
-    if (!manualPrompt) return;
-    await navigator.clipboard.writeText(manualPrompt);
-    setMessage("已复制手动桥接 Prompt");
   }
 
   return (
     <>
       <PageHeader
         eyebrow="Command Center"
-        title="老板指挥台"
-        description="输入经营目标后，由执行经理 Agent 检索已审核记忆、拆解任务、识别审批风险，并写入 Tasks。"
-        action={<span className="rounded-md border border-line bg-[#fbfcf8] px-3 py-2 text-sm text-moss">{message}</span>}
+        title="项目指挥台"
+        description="老板只需要给出目标，系统会自动生成 brief、建项目、拆任务，并把高风险项送去审批。"
+        action={
+          <span className="rounded-full border border-line/70 bg-paper/55 px-4 py-2 text-sm text-moss backdrop-blur-xl">
+            {message}
+          </span>
+        }
       />
 
-      <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-        <Panel title="输入经营命令" description={`主持人：${executive?.name ?? "执行经理 Agent"}。高风险任务会进入老板审批。`}>
+      <section className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
+        <Panel title="输入项目目标" description="可以关联现有项目，也可以直接把目标交给系统创建新项目。">
           <form className="space-y-4" onSubmit={submit}>
             <label className="block">
               <span className="text-sm font-medium text-ink">关联项目</span>
               <select
-                className="mt-2 w-full rounded-md border border-line bg-paper px-3 py-2 text-sm outline-none focus:border-moss"
+                className="mt-2 w-full rounded-2xl border border-line/70 bg-paper/70 px-4 py-3 text-sm outline-none focus:border-moss"
                 value={projectId}
                 onChange={(event) => setProjectId(event.target.value)}
               >
-                <option value="">不关联项目</option>
+                <option value="">新建项目</option>
                 {projects.map((project) => (
                   <option key={project.id} value={project.id}>
                     {project.name}
@@ -167,8 +120,8 @@ export function CommandCenterWorkspace() {
             </label>
 
             <textarea
-              className="min-h-48 w-full rounded-md border border-line bg-paper px-4 py-3 text-sm leading-6 outline-none focus:border-moss"
-              placeholder="例如：本周把 Aylahome 6 月社媒运营项目拆成可执行任务，并检查报价、合同和客户承诺风险。"
+              className="min-h-48 w-full rounded-[24px] border border-line/70 bg-paper/70 px-4 py-4 text-sm leading-6 outline-none focus:border-moss"
+              placeholder="例如：做一个 AI 外贸 B2B 自动建站工具 MVP，先打通项目创建、页面生成、输出交付物和 Review Gate。"
               value={goal}
               onChange={(event) => setGoal(event.target.value)}
               required
@@ -179,7 +132,7 @@ export function CommandCenterWorkspace() {
                 <button
                   key={example}
                   type="button"
-                  className="rounded-md border border-line bg-[#fbfcf8] px-3 py-1.5 text-xs text-moss hover:border-moss hover:text-ink"
+                  className="rounded-full border border-line/70 bg-paper/55 px-3 py-2 text-xs text-moss transition hover:border-moss hover:text-ink"
                   onClick={() => setGoal(example)}
                 >
                   {example}
@@ -187,128 +140,104 @@ export function CommandCenterWorkspace() {
               ))}
             </div>
 
-            <div className="flex flex-wrap gap-3">
-              <button
-                className="inline-flex items-center gap-2 rounded-md bg-ink px-4 py-2 text-sm font-semibold text-paper disabled:opacity-60"
-                disabled={isRunning}
-              >
-                <Send size={16} />
-                {isRunning ? "拆解中..." : "提交给执行经理"}
-              </button>
-              <button
-                type="button"
-                onClick={triggerN8n}
-                className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold text-moss"
-              >
-                <Workflow size={16} />
-                触发 n8n Webhook
-              </button>
-              {manualPrompt && (
-                <button
-                  type="button"
-                  onClick={copyManualPrompt}
-                  className="inline-flex items-center gap-2 rounded-md border border-line px-4 py-2 text-sm font-semibold text-moss"
-                >
-                  复制手动桥接 Prompt
-                </button>
-              )}
-            </div>
+            <button
+              className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2.5 text-sm font-semibold text-paper disabled:opacity-60"
+              disabled={isRunning}
+            >
+              <Send size={16} />
+              {isRunning ? "处理中..." : "启动项目工作流"}
+            </button>
           </form>
         </Panel>
 
-        <Panel title="拆解结果" description="任务、审批风险、模型运行和记忆引用会在这里汇总。">
-          <div className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-3">
-              <Metric icon={<ClipboardCheck size={16} />} label="任务" value={`${drafts.length}`} />
-              <Metric icon={<Sparkles size={16} />} label="高风险" value={`${highRiskCount}`} />
-              <Metric icon={<Database size={16} />} label="用到记忆" value={`${memoriesUsed.length}`} />
-            </div>
+        <Panel title="执行结果" description="这里展示本轮生成的项目 brief、任务清单、风险项和下一步动作。">
+          {result ? (
+            <div className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-4">
+                <Metric icon={<ClipboardCheck size={16} />} label="任务数" value={`${result.created_tasks.length}`} />
+                <Metric icon={<ShieldAlert size={16} />} label="风险项" value={`${result.risks.length}`} />
+                <Metric icon={<Bot size={16} />} label="建议 Agent" value={`${result.suggested_agents.length}`} />
+                <Metric icon={<Database size={16} />} label="项目状态" value={result.project.stage ?? "planning"} />
+              </div>
 
-            {hasResult && (
-              <div className="rounded-md border border-line bg-paper p-4">
-                <p className="text-sm font-semibold text-ink">执行摘要</p>
-                <p className="mt-2 text-sm leading-6 text-moss">{summary || "执行经理已完成拆解。"}</p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {agentRunStatus && <Tag>{agentRunStatus}</Tag>}
-                  {modelRun && <span className="rounded-md bg-[#e8efe4] px-2 py-1 text-xs font-medium text-moss">{modelRun.provider} / {modelRun.model}</span>}
-                  {modelRun?.estimatedCost !== undefined && (
-                    <span className="rounded-md bg-[#e8efe4] px-2 py-1 text-xs font-medium text-moss">
-                      约 ${modelRun.estimatedCost.toFixed(5)}
-                    </span>
-                  )}
-                  {pendingApprovalCount > 0 && <StatusBadge value="pending" />}
+              <div className="rounded-[24px] border border-line/70 bg-paper/55 p-4">
+                <p className="text-sm font-semibold text-ink">Project Brief</p>
+                <div className="mt-3 space-y-2 text-sm leading-6 text-moss">
+                  <p><span className="font-semibold text-ink">项目：</span>{result.brief.project_name}</p>
+                  <p><span className="font-semibold text-ink">客户：</span>{result.brief.client_name}</p>
+                  <p><span className="font-semibold text-ink">目标：</span>{result.brief.objective}</p>
+                  <p><span className="font-semibold text-ink">背景：</span>{result.brief.client_profile}</p>
+                  <p><span className="font-semibold text-ink">Brief：</span>{result.brief.brief}</p>
                 </div>
               </div>
-            )}
 
-            {drafts.length > 0 ? (
               <div className="space-y-3">
-                {drafts.map((task) => {
+                {result.created_tasks.map((row) => {
+                  const task = normalizeTask(row);
                   const agent = agents.find((item) => item.id === task.assignedAgentId);
                   return (
-                    <article key={task.id} className="rounded-md border border-line bg-paper p-4">
+                    <article key={task.id} className="rounded-[24px] border border-line/70 bg-paper/55 p-4">
                       <div className="flex items-start justify-between gap-3">
-                        <div className="flex items-center gap-2">
-                          <Bot size={16} className="text-moss" />
+                        <div>
                           <p className="font-medium text-ink">{task.title}</p>
+                          <p className="mt-1 text-sm leading-6 text-moss">{task.description}</p>
                         </div>
                         <StatusBadge value={task.riskLevel} />
                       </div>
-                      <p className="mt-2 text-sm leading-6 text-moss">{task.description}</p>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <span className="rounded-md bg-[#e8efe4] px-2 py-1 text-xs font-medium text-moss">{agent?.name ?? "未分配"}</span>
-                        <Tag>{task.priority}</Tag>
+                        <Tag>{agent?.name ?? task.assignedAgentRole ?? "未分配"}</Tag>
+                        <Tag>{task.modelPolicy ?? "default"}</Tag>
                         <StatusBadge value={task.approvalStatus} />
+                        <StatusBadge value={task.boardStatus ?? task.status} />
                       </div>
                     </article>
                   );
                 })}
               </div>
-            ) : (
-              <div className="rounded-md border border-dashed border-line bg-paper p-6 text-sm leading-6 text-moss">
-                暂无拆解结果。输入目标后，执行经理会生成任务并写入 Tasks。
-              </div>
-            )}
 
-            {memoriesUsed.length > 0 && (
-              <div className="rounded-md border border-line bg-[#fbfcf8] p-4">
-                <p className="text-sm font-semibold text-ink">本次引用的已审核记忆</p>
-                <div className="mt-3 space-y-2">
-                  {memoriesUsed.slice(0, 5).map((memory) => (
-                    <div key={memory.id} className="rounded-md bg-paper px-3 py-2">
-                      <p className="text-sm font-medium text-ink">{memory.title}</p>
-                      <p className="mt-1 line-clamp-2 text-xs leading-5 text-moss">{memory.summary ?? memory.content}</p>
-                    </div>
-                  ))}
-                </div>
+              <div className="rounded-[24px] border border-line/70 bg-paper/55 p-4">
+                <p className="text-sm font-semibold text-ink">下一步建议</p>
+                <p className="mt-2 text-sm leading-6 text-moss">{result.next_action}</p>
+                {result.risks.length > 0 ? (
+                  <ul className="mt-3 space-y-2 text-sm leading-6 text-moss">
+                    {result.risks.map((risk) => (
+                      <li key={risk}>- {risk}</li>
+                    ))}
+                  </ul>
+                ) : null}
               </div>
-            )}
 
-            {drafts.length > 0 && (
-              <Link href="/tasks" className="inline-flex items-center gap-2 rounded-md bg-moss px-4 py-2 text-sm font-semibold text-paper">
-                去 Tasks 执行
+              <Link
+                href={`/projects/${result.project.id}`}
+                className="inline-flex items-center gap-2 rounded-full bg-moss px-4 py-2.5 text-sm font-semibold text-paper"
+              >
+                打开项目详情
                 <ArrowRight size={16} />
               </Link>
-            )}
-          </div>
+            </div>
+          ) : (
+            <div className="rounded-[24px] border border-dashed border-line/70 bg-paper/35 p-6 text-sm leading-6 text-moss">
+              这里会展示新创建的项目、brief、任务拆解结果，以及下一步推荐动作。
+            </div>
+          )}
         </Panel>
       </section>
     </>
   );
 }
 
-function Metric({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
+function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="rounded-md border border-line bg-[#fbfcf8] p-3">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-moss">
+    <div className="rounded-[24px] border border-line/70 bg-paper/45 p-4">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-moss">
         {icon}
         {label}
       </div>
-      <p className="mt-2 text-xl font-semibold text-ink">{value}</p>
+      <p className="mt-2 text-2xl font-semibold text-ink">{value}</p>
     </div>
   );
 }
 
-function Tag({ children }: { children: React.ReactNode }) {
-  return <span className="rounded-md bg-[#e8efe4] px-2 py-1 text-xs font-medium text-moss">{children}</span>;
+function Tag({ children }: { children: ReactNode }) {
+  return <span className="rounded-full bg-[#e8efe4] px-2.5 py-1 text-xs font-medium text-moss">{children}</span>;
 }

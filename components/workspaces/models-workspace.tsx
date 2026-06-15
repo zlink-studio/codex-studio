@@ -11,11 +11,22 @@ import { cn } from "@/lib/utils";
 type TabKey = "providers" | "catalog" | "policies" | "runs";
 
 const tabs: Array<{ key: TabKey; label: string }> = [
-  { key: "providers", label: "Providers" },
-  { key: "catalog", label: "Model Catalog" },
-  { key: "policies", label: "Policies" },
-  { key: "runs", label: "Runs" }
+  { key: "providers", label: "服务商" },
+  { key: "catalog", label: "模型目录" },
+  { key: "policies", label: "路由策略" },
+  { key: "runs", label: "调用记录" }
 ];
+
+const statusLabels: Record<string, string> = {
+  configured: "已配置",
+  success: "成功",
+  succeeded: "成功",
+  missing_key: "缺少密钥",
+  pending: "待处理",
+  disabled: "已停用",
+  error: "异常",
+  failed: "失败"
+};
 
 const providerOptions: ModelProviderName[] = [
   "openai",
@@ -140,14 +151,14 @@ export function ModelsWorkspace() {
   return (
     <>
       <PageHeader
-        eyebrow="Models"
+        eyebrow="模型"
         title="模型管理中心"
-        description="统一管理 LLM Provider、模型目录、路由策略和调用记录。当前支持 OpenAI API、本机 Codex/OpenClaw 网关和手动桥接，其他 Provider 先保持占位。"
+        description="统一管理 LLM 服务商、模型目录、路由策略和调用记录。当前支持 OpenAI API、本机 Codex/OpenClaw 网关和手动桥接，其他服务商先保持占位。"
         action={<span className="rounded-md border border-line bg-[#fbfcf8] px-3 py-2 text-sm text-moss">{message}</span>}
       />
 
       <section className="grid gap-4 md:grid-cols-4">
-        <Metric icon={CheckCircle2} label="已配置 Provider" value={stats.configured} />
+        <Metric icon={CheckCircle2} label="已配置服务商" value={stats.configured} />
         <Metric icon={DatabaseZap} label="可用模型" value={stats.enabledModels} />
         <Metric icon={GitBranch} label="启用策略" value={stats.policies} />
         <Metric icon={CircleDollarSign} label="累计成本" value={`$${stats.totalCost.toFixed(4)}`} />
@@ -167,7 +178,7 @@ export function ModelsWorkspace() {
 
       <section className="mt-6">
         {activeTab === "providers" && (
-          <Panel title="LLM Providers" description="这里展示连接状态和配置入口，不展示任何 API Key。">
+          <Panel title="模型服务商" description="这里展示连接状态和配置入口，不展示任何 API Key。">
             <div className="grid gap-3 lg:grid-cols-2">
               {providers.map((provider) => (
                 <article key={provider.name} className="rounded-lg border border-line bg-paper p-4">
@@ -181,7 +192,7 @@ export function ModelsWorkspace() {
                   <div className="mt-4 space-y-2 text-sm text-moss">
                     <p>Env: {provider.apiKeyEnv}</p>
                     <p>Base URL: {provider.baseUrl ?? "由环境变量或 SDK 决定"}</p>
-                    <p>状态: {provider.enabled ? "enabled" : "disabled"}</p>
+                    <p>状态: {provider.enabled ? "已启用" : "已停用"}</p>
                     <p>{provider.notes}</p>
                   </div>
                   <button
@@ -190,7 +201,7 @@ export function ModelsWorkspace() {
                     className="mt-4 inline-flex items-center gap-2 rounded-md bg-moss px-3 py-2 text-sm font-semibold text-paper disabled:opacity-60"
                   >
                     {testingProvider === provider.name ? <Loader2 size={16} className="animate-spin" /> : <FlaskConical size={16} />}
-                    Test connection
+                    测试连接
                   </button>
                 </article>
               ))}
@@ -199,7 +210,7 @@ export function ModelsWorkspace() {
         )}
 
         {activeTab === "catalog" && (
-          <Panel title="Model Catalog" description="记录模型能力、上下文窗口、成本和推荐用途。">
+          <Panel title="模型目录" description="记录模型能力、上下文窗口、成本和推荐用途。">
             <div className="grid gap-3 lg:grid-cols-2">
               {catalog.map((model) => (
                 <article key={`${model.provider}-${model.model}`} className="rounded-lg border border-line bg-paper p-4">
@@ -250,7 +261,7 @@ export function ModelsWorkspace() {
               </form>
             </Panel>
 
-            <Panel title="Routing Policies" description="基础规则：高风险和 leader 使用强模型；内容走创意策略；简单表格走低成本策略。">
+            <Panel title="路由策略" description="基础规则：高风险和 leader 使用强模型；内容任务走创意策略；简单事务走低成本策略。">
               <div className="space-y-3">
                 {policies.map((policy) => (
                   <article key={policy.id ?? policy.name} className="rounded-lg border border-line bg-paper p-4">
@@ -281,7 +292,7 @@ export function ModelsWorkspace() {
         )}
 
         {activeTab === "runs" && (
-          <Panel title="Model Runs" description="记录每次调用使用的 Provider、模型、策略、token、成本和耗时。">
+          <Panel title="模型调用记录" description="记录每次调用使用的服务商、模型、策略、Token、成本和耗时。">
             {runs.length === 0 ? (
               <div className="rounded-lg border border-dashed border-line bg-paper p-8 text-center text-sm text-moss">
                 暂无模型调用记录。使用 Command Center 拆解任务后，这里会出现 run 记录。
@@ -291,14 +302,14 @@ export function ModelsWorkspace() {
                 <table className="min-w-full text-left text-sm">
                   <thead className="text-xs uppercase text-moss">
                     <tr>
-                      <th className="px-3 py-2">Time</th>
-                      <th className="px-3 py-2">Provider</th>
-                      <th className="px-3 py-2">Model</th>
-                      <th className="px-3 py-2">Policy</th>
+                      <th className="px-3 py-2">时间</th>
+                      <th className="px-3 py-2">服务商</th>
+                      <th className="px-3 py-2">模型</th>
+                      <th className="px-3 py-2">策略</th>
                       <th className="px-3 py-2">Tokens</th>
-                      <th className="px-3 py-2">Cost</th>
-                      <th className="px-3 py-2">Latency</th>
-                      <th className="px-3 py-2">Status</th>
+                      <th className="px-3 py-2">成本</th>
+                      <th className="px-3 py-2">耗时</th>
+                      <th className="px-3 py-2">状态</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -351,7 +362,7 @@ function StatusPill({ value }: { value: string }) {
       : value === "missing_key" || value === "pending"
         ? "bg-[#fff4d8] text-[#7a5a00]"
         : "bg-[#f4e3df] text-[#8a3c2f]";
-  return <span className={cn("rounded-md px-2 py-1 text-xs font-semibold", tone)}>{value}</span>;
+  return <span className={cn("rounded-md px-2 py-1 text-xs font-semibold", tone)}>{statusLabels[value] ?? value}</span>;
 }
 
 function Field({

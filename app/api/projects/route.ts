@@ -1,15 +1,15 @@
-import { fail, ok, parseJson, resolveOwnerId } from "@/lib/api";
-import { projects } from "@/lib/mock-data";
-import { isDemoDataEnabled, setupRequiredPayload } from "@/lib/runtime";
-import { createSupabaseServerClient } from "@/lib/supabase";
+import { fail, ok, parseJson } from "@/lib/api";
+import { appendCollectionItem, readCollection } from "@/lib/local-store";
+import { syncProjectState } from "@/lib/workflow-engine";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const supabase = createSupabaseServerClient();
-  if (!supabase) return ok(isDemoDataEnabled() ? projects : []);
-
-  const { data, error } = await supabase.from("projects").select("*, project_agents(agent_id)").order("created_at", { ascending: false });
-  if (error) return fail(error.message, 500);
-  return ok(data);
+  const projects = await readCollection<any>("projects");
+  const refreshed = await Promise.all(
+    projects.map(async (project) => (await syncProjectState(project.id)) ?? project)
+  );
+  return ok(refreshed);
 }
 
 export async function POST(request: Request) {
@@ -18,16 +18,22 @@ export async function POST(request: Request) {
     return fail("name, client_name and objective are required");
   }
 
-  const supabase = createSupabaseServerClient();
-  if (!supabase) {
-    if (isDemoDataEnabled()) return ok({ ...body, id: crypto.randomUUID(), progress: body.progress ?? 0 }, { status: 201 });
-    return fail(setupRequiredPayload("projects").message, 503);
-  }
-
-  const ownerId = resolveOwnerId(body);
-  if (!ownerId) return fail("owner_id or DEMO_OWNER_ID is required when Supabase is configured");
-
-  const { data, error } = await supabase.from("projects").insert({ ...body, owner_id: ownerId }).select("*").single();
-  if (error) return fail(error.message, 500);
-  return ok(data, { status: 201 });
+  const now = new Date().toISOString();
+  const record = {
+    id: crypto.randomUUID(),
+    name: String(body.name),
+    client_name: String(body.client_name),
+    objective: String(body.objective),
+    client_profile: String(body.client_profile ?? ""),
+    brief: body.brief ? String(body.brief) : null,
+    progress: 0,
+    stage: String(body.stage ?? "planning"),
+    risk_level: String(body.risk_level ?? "low"),
+    due_date: body.due_date ? String(body.due_date) : null,
+    agent_ids: Array.isArray(body.agent_ids) ? body.agent_ids : [],
+    created_at: now,
+    updated_at: now
+  };
+  await appendCollectionItem("projects", record);
+  return ok(record, { status: 201 });
 }

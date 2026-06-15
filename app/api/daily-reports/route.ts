@@ -1,15 +1,12 @@
-import { fail, ok, parseJson, resolveOwnerId } from "@/lib/api";
+import { fail, ok, parseJson } from "@/lib/api";
 import { dailyReport } from "@/lib/mock-data";
-import { isDemoDataEnabled, setupRequiredPayload } from "@/lib/runtime";
-import { createSupabaseServerClient } from "@/lib/supabase";
+import { appendCollectionItem, readCollection } from "@/lib/local-store";
+
+export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const supabase = createSupabaseServerClient();
-  if (!supabase) return ok(isDemoDataEnabled() ? dailyReport : null);
-
-  const { data, error } = await supabase.from("daily_reports").select("*").order("report_date", { ascending: false }).limit(7);
-  if (error) return fail(error.message, 500);
-  return ok(data);
+  const rows = await readCollection<any>("daily-reports");
+  return ok(rows.length ? rows : [dailyReport]);
 }
 
 export async function POST(request: Request) {
@@ -18,20 +15,14 @@ export async function POST(request: Request) {
     return fail("report_date and summary are required");
   }
 
-  const supabase = createSupabaseServerClient();
-  if (!supabase) {
-    if (isDemoDataEnabled()) return ok({ ...body, id: crypto.randomUUID() }, { status: 201 });
-    return fail(setupRequiredPayload("daily_reports").message, 503);
-  }
-
-  const ownerId = resolveOwnerId(body);
-  if (!ownerId) return fail("owner_id or DEMO_OWNER_ID is required when Supabase is configured");
-
-  const { data, error } = await supabase
-    .from("daily_reports")
-    .upsert({ ...body, owner_id: ownerId }, { onConflict: "owner_id,report_date" })
-    .select("*")
-    .single();
-  if (error) return fail(error.message, 500);
-  return ok(data, { status: 201 });
+  const record = {
+    id: crypto.randomUUID(),
+    report_date: body.report_date,
+    summary: body.summary,
+    wins: body.wins ?? [],
+    risks: body.risks ?? [],
+    next_actions: body.next_actions ?? []
+  };
+  await appendCollectionItem("daily-reports", record);
+  return ok(record, { status: 201 });
 }

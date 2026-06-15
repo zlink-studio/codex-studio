@@ -1,4 +1,4 @@
-import type { Agent, KnowledgeSource, Memory, MemoryAccessLog, MemoryCategory, MemoryRelation, ModelCatalogItem, ModelPolicy, ModelProvider, ModelRunSummary, Project, Task } from "@/lib/types";
+import type { Agent, AgentSkill, KnowledgeSource, Memory, MemoryAccessLog, MemoryCategory, MemoryRelation, ModelCatalogItem, ModelPolicy, ModelProvider, ModelRunSummary, Project, Skill, SkillReview, SkillRun, Task } from "@/lib/types";
 
 type AnyRow = Record<string, any>;
 
@@ -41,8 +41,10 @@ export function normalizeProject(row: AnyRow): Project {
     clientName: row.clientName ?? row.client_name,
     objective: row.objective,
     clientProfile: row.clientProfile ?? row.client_profile ?? "",
+    brief: row.brief ?? null,
     progress: Number(row.progress ?? 0),
     stage: row.stage ?? "planning",
+    riskLevel: row.riskLevel ?? row.risk_level ?? "low",
     agentIds: row.agentIds ?? row.agent_ids ?? relationAgents,
     dueDate: row.dueDate ?? row.due_date
   };
@@ -54,16 +56,23 @@ export function normalizeTask(row: AnyRow): Task {
     title: row.title,
     description: row.description,
     taskType: row.taskType ?? row.task_type ?? "general",
+    suggestedSkills: row.suggestedSkills ?? row.suggested_skills ?? [],
     clientName: row.clientName ?? row.client_name ?? null,
     projectId: row.projectId ?? row.project_id ?? null,
     assignedAgentId: row.assignedAgentId ?? row.assigned_agent_id ?? null,
+    assignedAgentRole: row.assignedAgentRole ?? row.assigned_agent_role ?? null,
     priority: row.priority ?? "medium",
     riskLevel: row.riskLevel ?? row.risk_level ?? "low",
     dueAt: row.dueAt ?? row.due_at ?? null,
     status: row.status ?? "todo",
     boardStatus: row.boardStatus ?? row.board_status ?? row.status ?? "todo",
     approvalStatus: row.approvalStatus ?? row.approval_status ?? "not_required",
+    approvalRequired: Boolean(row.approvalRequired ?? row.approval_required ?? false),
     reviewStatus: row.reviewStatus ?? row.review_status ?? "not_required",
+    modelPolicy: row.modelPolicy ?? row.model_policy ?? null,
+    inputRequirements: row.inputRequirements ?? row.input_requirements ?? null,
+    outputRequirements: row.outputRequirements ?? row.output_requirements ?? null,
+    result: row.result ?? null,
     estimatedCost: Number(row.estimatedCost ?? row.estimated_cost ?? 0),
     actualCost: Number(row.actualCost ?? row.actual_cost ?? 0),
     parentTaskId: row.parentTaskId ?? row.parent_task_id ?? null,
@@ -225,6 +234,73 @@ export function normalizeModelRun(row: AnyRow): ModelRunSummary {
     status: row.status ?? "success",
     error: row.error ?? null,
     createdAt: row.createdAt ?? row.created_at ?? undefined
+  };
+}
+
+export function normalizeSkill(row: AnyRow): Skill {
+  return {
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    category: row.category,
+    description: row.description ?? "",
+    instructions: row.instructions ?? "",
+    inputSchema: row.inputSchema ?? row.input_schema ?? null,
+    outputSchema: row.outputSchema ?? row.output_schema ?? null,
+    riskLevel: row.riskLevel ?? row.risk_level ?? "low",
+    skillType: row.skillType ?? row.skill_type ?? "knowledge",
+    requiredTools: row.requiredTools ?? row.required_tools ?? [],
+    requiredMemoryTypes: row.requiredMemoryTypes ?? row.required_memory_types ?? [],
+    approvalRequired: Boolean(row.approvalRequired ?? row.approval_required ?? false),
+    source: row.source ?? "custom",
+    sourceUrl: row.sourceUrl ?? row.source_url ?? null,
+    license: row.license ?? null,
+    version: row.version ?? null,
+    enabled: Boolean(row.enabled ?? true),
+    createdAt: row.createdAt ?? row.created_at ?? undefined,
+    updatedAt: row.updatedAt ?? row.updated_at ?? undefined
+  };
+}
+
+export function normalizeAgentSkill(row: AnyRow): AgentSkill {
+  return {
+    id: row.id,
+    agentId: row.agentId ?? row.agent_id,
+    skillId: row.skillId ?? row.skill_id,
+    priority: row.priority ?? "secondary",
+    enabled: Boolean(row.enabled ?? true),
+    config: row.config ?? null,
+    createdAt: row.createdAt ?? row.created_at ?? undefined,
+    updatedAt: row.updatedAt ?? row.updated_at ?? undefined
+  };
+}
+
+export function normalizeSkillRun(row: AnyRow): SkillRun {
+  return {
+    id: row.id,
+    skillId: row.skillId ?? row.skill_id,
+    agentId: row.agentId ?? row.agent_id ?? null,
+    taskId: row.taskId ?? row.task_id ?? null,
+    agentRunId: row.agentRunId ?? row.agent_run_id ?? null,
+    modelRunId: row.modelRunId ?? row.model_run_id ?? null,
+    status: row.status ?? "success",
+    input: row.input ?? null,
+    output: row.output ?? null,
+    error: row.error ?? null,
+    latencyMs: row.latencyMs ?? row.latency_ms ?? null,
+    createdAt: row.createdAt ?? row.created_at ?? new Date().toISOString()
+  };
+}
+
+export function normalizeSkillReview(row: AnyRow): SkillReview {
+  return {
+    id: row.id,
+    skillId: row.skillId ?? row.skill_id,
+    reviewStatus: row.reviewStatus ?? row.review_status ?? "pending",
+    riskNotes: row.riskNotes ?? row.risk_notes ?? null,
+    reviewedBy: row.reviewedBy ?? row.reviewed_by ?? null,
+    reviewedAt: row.reviewedAt ?? row.reviewed_at ?? null,
+    createdAt: row.createdAt ?? row.created_at ?? new Date().toISOString()
   };
 }
 

@@ -26,7 +26,7 @@ export async function decomposeGoal(goal: string): Promise<TaskDraft[]> {
       {
         role: "system",
         content:
-          "你是一人公司执行经理 Agent。把老板目标拆成 3-6 个任务，按岗位分配 Agent。高风险任务 riskLevel 必须是 high 或 critical，approvalStatus 必须 pending。只输出 JSON 数组。"
+          "你是一人公司执行经理 Agent。把主理目标拆成 3-6 个任务，按岗位分配 Agent。高风险任务 riskLevel 必须是 high 或 critical，approvalStatus 必须 pending。只输出 JSON 数组。"
       },
       {
         role: "user",
@@ -123,6 +123,6 @@ export async function runMeeting(topic: string, participantAgentIds: string[]) {
       content: `我从岗位视角建议：围绕“${topic}”先明确风险边界，再拆成可验收任务。`
     })),
     conclusion: `围绕“${topic}”，优先推进低风险可执行事项；涉及客户承诺、预算或自动化外部动作的部分进入审批。`,
-    actionItems: ["执行经理整理任务清单", "相关 Agent 补充岗位建议", "老板审批高风险事项"]
+    actionItems: ["执行经理整理任务清单", "相关 Agent 补充岗位建议", "主理人审批高风险事项"]
   };
 }

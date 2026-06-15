@@ -4,10 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:clean": "powershell -ExecutionPolicy Bypass -File ./tools/restart-clean.ps1 -Mode dev -Port 3200",
     "dev:codespaces": "next dev -H 0.0.0.0 -p 3000",
     "env:import": "node tools/import-env.mjs",
     "build": "next build",
     "start": "next start",
+    "start:clean": "powershell -ExecutionPolicy Bypass -File ./tools/restart-clean.ps1 -Mode prod -Port 3200",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
   },

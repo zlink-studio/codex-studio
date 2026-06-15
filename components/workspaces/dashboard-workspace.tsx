@@ -1,260 +1,150 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AlertTriangle, Bot, CheckCircle2, ClipboardList, Database } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ClipboardList, FileOutput } from "lucide-react";
 import { MetricCard } from "@/components/metric-card";
 import { PageHeader } from "@/components/page-header";
 import { Panel } from "@/components/panel";
-import { ProgressBar } from "@/components/progress-bar";
 import { StatusBadge } from "@/components/status-badge";
-import { TaskRow } from "@/components/task-row";
-import { normalizeAgent, normalizeProject, normalizeTask, readApiData } from "@/lib/client-normalizers";
-import type { Agent, DailyReport, Project, Task } from "@/lib/types";
+import { normalizeProject, normalizeTask, readApiData } from "@/lib/client-normalizers";
+import type { Deliverable, Project, Task } from "@/lib/types";
 
-type Health = {
-  mode: "database" | "demo" | "setup_required";
-  missing: string[];
-  readyForRealUse: boolean;
-  database?: { connected: boolean; ownerReady?: boolean; error?: string };
-};
-
-const emptyReport: DailyReport = {
-  id: "empty",
-  reportDate: new Date().toISOString().slice(0, 10),
-  summary: "暂无日报。连接 Supabase 后可基于真实任务生成日报。",
-  wins: [],
-  risks: [],
-  nextActions: []
+type OwnerInbox = {
+  pendingApprovals: any[];
+  blockedTasks: any[];
+  todayDone: any[];
+  recentDeliverables: Array<Deliverable & { projectName?: string }>;
+  highRiskItems: any[];
 };
 
 export function DashboardWorkspace() {
-  const [agents, setAgents] = useState<Agent[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
-  const [tasks, setTasks] = useState<Task[]>([]);
-  const [report, setReport] = useState<DailyReport>(emptyReport);
-  const [health, setHealth] = useState<Health | null>(null);
-  const [message, setMessage] = useState("正在加载真实数据...");
-  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [inbox, setInbox] = useState<OwnerInbox>({
+    pendingApprovals: [],
+    blockedTasks: [],
+    todayDone: [],
+    recentDeliverables: [],
+    highRiskItems: []
+  });
+  const [message, setMessage] = useState("正在加载总控台...");
 
   useEffect(() => {
-    Promise.all([
-      fetch("/api/system/health").then((response) => readApiData<Health>(response)),
-      fetch("/api/agents").then((response) => readApiData<any[]>(response)),
-      fetch("/api/projects").then((response) => readApiData<any[]>(response)),
-      fetch("/api/tasks").then((response) => readApiData<any[]>(response)),
-      fetch("/api/daily-reports").then((response) => readApiData<any>(response))
-    ])
-      .then(([healthRow, agentRows, projectRows, taskRows, reportRows]) => {
-        setHealth(healthRow);
-        setAgents(agentRows.map(normalizeAgent));
-        setProjects(projectRows.map(normalizeProject));
-        setTasks(taskRows.map(normalizeTask));
-        setReport(normalizeReport(Array.isArray(reportRows) ? reportRows[0] : reportRows));
-        setMessage(healthRow.readyForRealUse ? "真实运行环境已就绪" : "真实运行环境尚未配置完整");
-      })
-      .catch((error: Error) => setMessage(error.message));
+    void loadData();
   }, []);
 
-  const pendingApprovals = tasks.filter((task) => task.approvalStatus === "pending");
-  const riskTasks = tasks.filter((task) => task.riskLevel === "high" || task.riskLevel === "critical");
-  const averageProgress = projects.length > 0 ? Math.round(projects.reduce((sum, project) => sum + project.progress, 0) / projects.length) : 0;
-
-  async function generateReport() {
-    setIsGeneratingReport(true);
-    setMessage("正在生成今日日报...");
-
+  async function loadData() {
     try {
-      const data = await readApiData<any>(
-        await fetch("/api/daily-reports/generate", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ report_date: new Date().toISOString().slice(0, 10) })
-        })
-      );
-      setReport(normalizeReport(data));
-      setMessage(data.persisted === false ? "已生成演示日报草稿" : "日报已保存");
+      const [projectRows, ownerInbox] = await Promise.all([
+        fetch("/api/projects").then((response) => readApiData<any[]>(response)),
+        fetch("/api/owner-inbox").then((response) => readApiData<OwnerInbox>(response))
+      ]);
+      setProjects(projectRows.map(normalizeProject));
+      setInbox(ownerInbox);
+      setMessage("总控台已连接真实本地执行数据。");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "日报生成失败");
-    } finally {
-      setIsGeneratingReport(false);
+      setMessage(error instanceof Error ? error.message : "加载失败");
     }
   }
 
-  async function decideApproval(taskId: string, status: "approved" | "rejected") {
-    setMessage(status === "approved" ? "正在批准任务..." : "正在拒绝任务...");
-
-    try {
-      await readApiData<any>(
-        await fetch("/api/approvals", {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ task_id: taskId, status })
-        })
-      );
-      setTasks((current) => current.map((task) => (task.id === taskId ? { ...task, approvalStatus: status } : task)));
-      setMessage(status === "approved" ? "任务已批准" : "任务已拒绝");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "审批失败");
-    }
-  }
+  const averageProgress =
+    projects.length > 0
+      ? Math.round(projects.reduce((sum, project) => sum + project.progress, 0) / projects.length)
+      : 0;
 
   return (
     <>
       <PageHeader
         eyebrow="Dashboard"
-        title="今日经营驾驶舱"
-        description="把真实日报、审批、任务进度、员工负载和风险提醒压缩到一页。"
-        action={<span className="rounded-md border border-line bg-[#fbfcf8] px-3 py-2 text-sm text-moss">{message}</span>}
+        title="经营总控台"
+        description="这里只看真实数据：待审批、阻塞、今日完成和最近交付物。"
+        action={
+          <span className="rounded-full border border-line/70 bg-paper/55 px-4 py-2 text-sm text-moss backdrop-blur-xl">
+            {message}
+          </span>
+        }
       />
 
-      {health && !health.readyForRealUse && <SetupNotice health={health} />}
-
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="待审批事项" value={`${pendingApprovals.length}`} detail="高风险任务会进入老板审批队列。" icon={CheckCircle2} />
-        <MetricCard label="进行中任务" value={`${tasks.filter((task) => task.status === "in_progress").length}`} detail="来自真实 tasks 表。" icon={ClipboardList} />
-        <MetricCard label="项目平均进度" value={`${averageProgress}%`} detail="来自真实客户项目。" icon={Bot} />
-        <MetricCard label="风险提醒" value={`${riskTasks.length}`} detail="high / critical 风险任务。" icon={AlertTriangle} />
+        <MetricCard label="待老板审批" value={`${inbox.pendingApprovals.length}`} detail="高风险任务优先看" icon={CheckCircle2} />
+        <MetricCard label="已阻塞任务" value={`${inbox.blockedTasks.length}`} detail="需要解除卡点" icon={AlertTriangle} />
+        <MetricCard label="今日完成" value={`${inbox.todayDone.length}`} detail="当天已交付闭环" icon={ClipboardList} />
+        <MetricCard label="项目平均进度" value={`${averageProgress}%`} detail="自动按任务状态计算" icon={FileOutput} />
       </section>
 
-      <section className="mt-6 grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Panel title={`今日日报 / ${report.reportDate}`} description={report.summary}>
-          <div className="mb-4">
-            <button className="rounded-md bg-ink px-3 py-2 text-sm font-semibold text-paper disabled:opacity-60" onClick={generateReport} disabled={isGeneratingReport}>
-              {isGeneratingReport ? "生成中..." : "生成今日日报"}
-            </button>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            <ReportList title="完成" items={report.wins} empty="暂无完成项" />
-            <ReportList title="风险" items={report.risks} empty="暂无风险" />
-            <ReportList title="下一步" items={report.nextActions} empty="暂无下一步" />
-          </div>
+      <section className="mt-6 grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+        <Panel title="待审批任务" description="这些任务已经有结果，但还不能继续，需要老板点头。">
+          <TaskList tasks={inbox.pendingApprovals.map(normalizeTask)} empty="当前没有待审批任务。" />
         </Panel>
 
-        <Panel title="员工状态" description="连接真实数据库后，这里展示 agents 表中的数字员工。">
-          {agents.length === 0 ? (
-            <EmptyState text="暂无真实 Agent。先到 Agents 页面创建执行经理和 Worker。" />
-          ) : (
-            <div className="space-y-4">
-              {agents.map((agent) => (
-                <div key={agent.id} className="flex items-center justify-between gap-4 border-b border-line pb-3 last:border-0 last:pb-0">
-                  <div>
-                    <p className="font-medium text-ink">{agent.name}</p>
-                    <p className="mt-1 text-sm text-moss">{agent.currentFocus || agent.title}</p>
-                  </div>
-                  <StatusBadge value={agent.status} />
-                </div>
-              ))}
-            </div>
-          )}
+        <Panel title="已阻塞任务" description="这些任务卡住了，通常需要补资料、调整策略或重新决策。">
+          <TaskList tasks={inbox.blockedTasks.map(normalizeTask)} empty="当前没有阻塞任务。" />
         </Panel>
       </section>
 
-      <section className="mt-6 grid gap-6 xl:grid-cols-[0.85fr_1.15fr]">
-        <Panel title="任务进度" description="项目级进度，用于判断是否需要重新分配 Agent。">
-          {projects.length === 0 ? (
-            <EmptyState text="暂无真实项目。先创建客户项目。" />
+      <section className="mt-6 grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+        <Panel title="今日完成任务" description="今天已经完成的任务，会在这里汇总出来。">
+          <TaskList tasks={inbox.todayDone.map(normalizeTask)} empty="今天还没有完成任务。" />
+        </Panel>
+
+        <Panel title="最近交付物" description="最新落地的 deliverables 都会出现在这里。">
+          {inbox.recentDeliverables.length === 0 ? (
+            <EmptyState text="还没有新的交付物。" />
           ) : (
-            <div className="space-y-5">
-              {projects.map((project) => (
-                <div key={project.id}>
-                  <div className="mb-2 flex items-center justify-between gap-4">
-                    <p className="font-medium text-ink">{project.name}</p>
-                    <span className="text-sm font-semibold text-moss">{project.progress}%</span>
+            <div className="space-y-3">
+              {inbox.recentDeliverables.map((item) => (
+                <div key={item.id} className="rounded-[24px] border border-line/70 bg-paper/45 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <p className="font-medium text-ink">{item.title}</p>
+                      <p className="mt-1 text-sm text-moss">{item.projectName ?? item.projectId}</p>
+                    </div>
+                    <StatusBadge value={item.status === "review" ? "review" : item.status === "approved" ? "done" : "todo"} label={item.status} />
                   </div>
-                  <ProgressBar value={project.progress} />
+                  <p className="mt-2 text-xs text-moss">{item.filePath ?? "文本交付物"}</p>
                 </div>
               ))}
             </div>
           )}
         </Panel>
+      </section>
 
-        <Panel title="待审批与风险任务" description="高风险任务必须先过老板审批，再触发外部工具或客户动作。">
-          {pendingApprovals.length > 0 && (
-            <div className="mb-5 space-y-3">
-              {pendingApprovals.map((task) => (
-                <div key={task.id} className="flex flex-col justify-between gap-3 rounded-md border border-line bg-paper p-3 md:flex-row md:items-center">
-                  <div>
-                    <p className="text-sm font-semibold text-ink">{task.title}</p>
-                    <p className="mt-1 text-xs text-moss">风险等级：{task.riskLevel}</p>
-                  </div>
-                  <div className="flex gap-2">
-                    <button className="rounded-md bg-moss px-3 py-2 text-xs font-semibold text-paper" onClick={() => decideApproval(task.id, "approved")}>批准</button>
-                    <button className="rounded-md border border-line px-3 py-2 text-xs font-semibold text-moss" onClick={() => decideApproval(task.id, "rejected")}>拒绝</button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          {riskTasks.length === 0 ? (
-            <EmptyState text="暂无高风险任务。" />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left">
-                <thead>
-                  <tr className="border-b border-line text-xs uppercase tracking-wide text-moss">
-                    <th className="pb-3 pr-4 font-semibold">任务</th>
-                    <th className="pb-3 pr-4 font-semibold">负责人</th>
-                    <th className="pb-3 pr-4 font-semibold">项目</th>
-                    <th className="pb-3 pr-4 font-semibold">风险</th>
-                    <th className="pb-3 pr-4 font-semibold">审批</th>
-                    <th className="pb-3 font-semibold">状态</th>
-                  </tr>
-                </thead>
-                <tbody>{riskTasks.map((task) => <TaskRow key={task.id} task={task} agents={agents} projects={projects} />)}</tbody>
-              </table>
-            </div>
-          )}
+      <section className="mt-6">
+        <Panel title="高风险事项" description="这些事项需要重点关注，不会自动执行外部动作。">
+          <TaskList tasks={inbox.highRiskItems.map(normalizeTask)} empty="当前没有高风险事项。" />
         </Panel>
       </section>
     </>
   );
 }
 
-function normalizeReport(row: any): DailyReport {
-  if (!row) return emptyReport;
-  return {
-    id: row.id ?? "report",
-    reportDate: row.reportDate ?? row.report_date ?? emptyReport.reportDate,
-    summary: row.summary ?? emptyReport.summary,
-    wins: row.wins ?? [],
-    risks: row.risks ?? [],
-    nextActions: row.nextActions ?? row.next_actions ?? []
-  };
-}
+function TaskList({ tasks, empty }: { tasks: Task[]; empty: string }) {
+  if (tasks.length === 0) return <EmptyState text={empty} />;
 
-function SetupNotice({ health }: { health: Health }) {
   return (
-    <div className="mb-6 rounded-lg border border-amber bg-[#fffaf0] p-4">
-      <div className="flex items-start gap-3">
-        <Database className="mt-0.5 shrink-0 text-amber" size={20} />
-        <div>
-          <p className="font-semibold text-ink">真实运行环境尚未就绪</p>
-          <p className="mt-1 text-sm leading-6 text-moss">
-            当前模式：{health.mode}。缺少：{health.missing.length ? health.missing.join(", ") : "数据库 owner 或连接检查未通过"}。
-          </p>
+    <div className="space-y-3">
+      {tasks.map((task) => (
+        <div key={task.id} className="rounded-[24px] border border-line/70 bg-paper/45 p-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+            <div>
+              <p className="font-semibold text-ink">{task.title}</p>
+              <p className="mt-1 text-sm leading-6 text-moss">{task.description}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <StatusBadge value={task.riskLevel} />
+              <StatusBadge value={task.approvalStatus} />
+              <StatusBadge value={task.boardStatus ?? task.status} />
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
-  );
-}
-
-function ReportList({ title, items, empty }: { title: string; items: string[]; empty: string }) {
-  return (
-    <div>
-      <h3 className="mb-2 text-sm font-semibold text-ink">{title}</h3>
-      {items.length === 0 ? (
-        <p className="text-sm text-moss">{empty}</p>
-      ) : (
-        <ul className="space-y-2 text-sm leading-6 text-moss">
-          {items.map((item) => (
-            <li key={item}>- {item}</li>
-          ))}
-        </ul>
-      )}
+      ))}
     </div>
   );
 }
 
 function EmptyState({ text }: { text: string }) {
-  return <div className="rounded-md border border-dashed border-line bg-paper p-6 text-center text-sm text-moss">{text}</div>;
+  return (
+    <div className="rounded-[24px] border border-dashed border-line/70 bg-paper/35 p-8 text-center text-sm text-moss">
+      {text}
+    </div>
+  );
 }

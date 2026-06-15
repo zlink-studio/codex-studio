@@ -12,8 +12,23 @@ export type AgentDepartment =
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 export type RiskLevel = "low" | "medium" | "high" | "critical";
 export type ApprovalStatus = "not_required" | "pending" | "approved" | "rejected";
-export type TaskStatus = "backlog" | "todo" | "in_progress" | "review" | "blocked" | "done" | "cancelled";
-export type BoardStatus = "backlog" | "todo" | "in_progress" | "review" | "done" | "blocked";
+export type TaskStatus =
+  | "backlog"
+  | "todo"
+  | "in_progress"
+  | "review"
+  | "blocked"
+  | "waiting_boss_approval"
+  | "done"
+  | "cancelled";
+export type BoardStatus =
+  | "backlog"
+  | "todo"
+  | "in_progress"
+  | "review"
+  | "done"
+  | "blocked"
+  | "waiting_boss_approval";
 export type ReviewStatus = "not_required" | "pending" | "approved" | "rejected";
 export type AgentRole = "leader" | "worker" | "reviewer";
 export type TaskLogType = "thinking" | "action" | "tool_call" | "result" | "error" | "review" | "approval";
@@ -31,6 +46,31 @@ export type KnowledgeSourceType = "manual" | "upload" | "wps" | "kdocs" | "notio
 export type KnowledgeSourceSyncMode = "manual" | "scheduled" | "webhook";
 export type KnowledgeSourceStatus = "active" | "paused" | "error";
 export type ToolConnectionType = "openai" | "supabase" | "n8n" | "browser" | "email" | "crm";
+export type SkillCategory = "management" | "memory" | "content" | "seo" | "sales" | "ads" | "data" | "code" | "automation" | "review";
+export type SkillType = "knowledge" | "action";
+export type SkillSource = "custom" | "github" | "imported";
+export type SkillRunStatus = "success" | "error" | "skipped" | "pending_approval";
+export type SkillReviewStatus = "pending" | "approved" | "rejected";
+export type AgentSkillPriority = "primary" | "secondary" | "optional";
+export type DeliverableType =
+  | "markdown"
+  | "html"
+  | "json"
+  | "text"
+  | "image_prompt"
+  | "report"
+  | "wordpress_draft";
+export type DeliverableStatus = "draft" | "review" | "approved" | "rejected" | "archived";
+export type ProjectLogEventType =
+  | "project_created"
+  | "brief_generated"
+  | "task_created"
+  | "task_started"
+  | "task_completed"
+  | "task_blocked"
+  | "review_completed"
+  | "deliverable_created"
+  | "boss_approval_required";
 export type ModelProviderName =
   | "openai"
   | "codex_local"
@@ -78,8 +118,10 @@ export type Project = {
   clientName: string;
   objective: string;
   clientProfile: string;
+  brief?: string | null;
   progress: number;
   stage: string;
+  riskLevel?: RiskLevel;
   agentIds: string[];
   dueDate?: string;
 };
@@ -89,16 +131,23 @@ export type Task = {
   title: string;
   description: string;
   taskType?: string;
+  suggestedSkills?: string[];
   clientName?: string | null;
   projectId?: string | null;
   assignedAgentId?: string | null;
+  assignedAgentRole?: string | null;
   priority: TaskPriority;
   riskLevel: RiskLevel;
   dueAt?: string | null;
   status: TaskStatus;
   boardStatus?: BoardStatus;
   approvalStatus: ApprovalStatus;
+  approvalRequired?: boolean;
   reviewStatus?: ReviewStatus;
+  modelPolicy?: string | null;
+  inputRequirements?: string | null;
+  outputRequirements?: string | null;
+  result?: string | null;
   estimatedCost?: number;
   actualCost?: number;
   parentTaskId?: string | null;
@@ -150,6 +199,32 @@ export type QualityReview = {
   notes?: string | null;
   createdAt: string;
   decidedAt?: string | null;
+};
+
+export type Deliverable = {
+  id: string;
+  projectId: string;
+  taskId?: string | null;
+  agentId?: string | null;
+  title: string;
+  type: DeliverableType;
+  filePath?: string | null;
+  content?: string | null;
+  status: DeliverableStatus;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ProjectLog = {
+  id: string;
+  projectId: string;
+  eventType: ProjectLogEventType;
+  title: string;
+  description: string;
+  relatedTaskId?: string | null;
+  relatedAgentId?: string | null;
+  relatedDeliverableId?: string | null;
+  createdAt: string;
 };
 
 export type Memory = {
@@ -299,6 +374,65 @@ export type ModelRunSummary = {
   status?: ModelRunStatus | string;
   error?: string | null;
   createdAt?: string;
+};
+
+export type Skill = {
+  id: string;
+  name: string;
+  slug: string;
+  category: SkillCategory;
+  description: string;
+  instructions: string;
+  inputSchema?: Record<string, unknown> | null;
+  outputSchema?: Record<string, unknown> | null;
+  riskLevel: RiskLevel;
+  skillType: SkillType;
+  requiredTools: ToolConnectionType[];
+  requiredMemoryTypes: MemoryType[];
+  approvalRequired: boolean;
+  source: SkillSource;
+  sourceUrl?: string | null;
+  license?: string | null;
+  version?: string | null;
+  enabled: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type AgentSkill = {
+  id: string;
+  agentId: string;
+  skillId: string;
+  priority: AgentSkillPriority;
+  enabled: boolean;
+  config?: Record<string, unknown> | null;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type SkillRun = {
+  id: string;
+  skillId: string;
+  agentId?: string | null;
+  taskId?: string | null;
+  agentRunId?: string | null;
+  modelRunId?: string | null;
+  status: SkillRunStatus;
+  input?: Record<string, unknown> | null;
+  output?: Record<string, unknown> | null;
+  error?: string | null;
+  latencyMs?: number | null;
+  createdAt: string;
+};
+
+export type SkillReview = {
+  id: string;
+  skillId: string;
+  reviewStatus: SkillReviewStatus;
+  riskNotes?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: string | null;
+  createdAt: string;
 };
 
 export type Meeting = {

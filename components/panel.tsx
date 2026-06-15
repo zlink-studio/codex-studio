@@ -13,10 +13,10 @@ export function Panel({
   description?: string;
 }) {
   return (
-    <section className={cn("rounded-lg border border-line bg-[#fbfcf8] p-5 shadow-soft", className)}>
+    <section className={cn("glass-panel rounded-[28px] p-5 shadow-soft sm:p-6", className)}>
       {(title || description) && (
-        <div className="mb-4">
-          {title && <h3 className="text-base font-semibold text-ink">{title}</h3>}
+        <div className="mb-5">
+          {title && <h3 className="text-lg font-semibold tracking-tight text-ink">{title}</h3>}
           {description && <p className="mt-1 text-sm leading-6 text-moss">{description}</p>}
         </div>
       )}

@@ -25,7 +25,7 @@ const providers: Record<ModelProviderName, LLMProviderAdapter> = {
 };
 
 export const defaultModelPolicies: ModelPolicy[] = [
-  policy("strong_reasoning", "leader", null, null, "openai", "gpt-4o", 0.2, 4000, "high", "复杂推理、高风险规划和老板级决策。"),
+policy("strong_reasoning", "leader", null, null, "openai", "gpt-4o", 0.2, 4000, "high", "复杂推理、高风险规划和主理级决策。"),
   policy("review_policy", "reviewer", null, null, "openai", "gpt-4o", 0.1, 3000, "high", "质量审核、风险复核和审批前检查。"),
   policy("creative_content", null, "content", null, "openai", "gpt-4o-mini", 0.7, 2500, "medium", "内容创意、社媒文案和营销表达。"),
   policy("low_cost", null, "simple", null, "openai", "gpt-4o-mini", 0.2, 1400, "low", "低风险、表格、整理和轻量任务。"),
@@ -98,6 +98,16 @@ export function resolveModelPolicy(context: ModelRoutingContext): ResolvedModelP
     };
   }
 
+  if (process.env.DEFAULT_LLM_PROVIDER === "deepseek" && selected.primaryProvider === "openai") {
+    selected = {
+      ...selected,
+      primaryProvider: "deepseek",
+      primaryModel: defaultDeepSeekModelForPolicy(),
+      fallbackProvider: "manual_bridge",
+      fallbackModel: "chatgpt-web-manual"
+    };
+  }
+
   if (!process.env.OPENAI_API_KEY && isCodexLocalConfigured() && selected.primaryProvider === "openai") {
     selected = {
       ...selected,
@@ -157,6 +167,7 @@ function chooseDefaultProvider(): ModelProviderName {
   if (process.env.DEFAULT_LLM_PROVIDER) return process.env.DEFAULT_LLM_PROVIDER as ModelProviderName;
   if (process.env.OPENAI_API_KEY) return "openai";
   if (isCodexLocalConfigured()) return "codex_local";
+  if (process.env.DEEPSEEK_API_KEY) return "deepseek";
   if (process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY) return "qwen";
   if (process.env.GEMINI_API_KEY) return "gemini";
   return "manual_bridge";
@@ -166,6 +177,7 @@ function defaultModelForProvider(providerName: ModelProviderName) {
   if (providerName === "codex_local") return process.env.CODEX_LOCAL_MODEL || "openai/gpt-5.5";
   if (providerName === "manual_bridge") return "chatgpt-web-manual";
   if (providerName === "gemini") return process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";
+  if (providerName === "deepseek") return defaultDeepSeekModelForPolicy();
   if (providerName === "qwen") return process.env.QWEN_MODEL || "qwen-plus";
   return "gpt-4o-mini";
 }
@@ -189,4 +201,8 @@ function defaultQwenModelForPolicy(policyName: string) {
   if (policyName === "strong_reasoning" || policyName === "review_policy" || policyName === "coding" || policyName === "long_context") return "qwen-max";
   if (policyName === "low_cost") return "qwen-turbo";
   return "qwen-plus";
+}
+
+function defaultDeepSeekModelForPolicy() {
+  return process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
 }

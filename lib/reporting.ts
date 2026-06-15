@@ -69,17 +69,13 @@ function fallbackReport(reportDate: string, sourceTasks: Task[], sourceAgents: A
   return {
     id: `report-${reportDate}`,
     reportDate,
-    summary: `今日共跟进 ${sourceTasks.length} 个任务、${activeProjects.length} 个活跃项目，当前有 ${pendingApprovals.length} 个事项等待老板审批。`,
+    summary: `今日共跟进 ${sourceTasks.length} 个任务、${activeProjects.length} 个活跃项目，当前有 ${pendingApprovals.length} 个事项等待主理人审批。`,
     wins: doneTasks.length > 0 ? doneTasks.map((task) => `完成：${task.title}`) : ["已完成今日经营数据同步与任务盘点"],
     risks: [
       ...pendingApprovals.map((task) => `待审批：${task.title}`),
       ...blockedTasks.map((task) => `阻塞：${task.title}`),
       ...busyAgents.map((agent) => `员工负载偏高：${agent.name}`)
     ].slice(0, 5),
-    nextActions: [
-      "处理待审批高风险任务",
-      "检查阻塞任务并重新分配负责人",
-      "让执行经理 Agent 更新明日优先级"
-    ]
+    nextActions: ["处理待审批高风险任务", "检查阻塞任务并重新分配负责人", "让执行经理 Agent 更新明日优先级"]
   };
 }
