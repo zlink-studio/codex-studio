@@ -154,6 +154,7 @@ export type Task = {
   sortOrder?: number;
   usedMemoryIds?: string[];
   modelRun?: ModelRunSummary | null;
+  reworkCount?: number;
   outputs: TaskOutput[];
 };
 

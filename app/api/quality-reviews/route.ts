@@ -37,7 +37,9 @@ export async function PATCH(request: Request) {
   const reviews = await readCollection<any>("quality-reviews");
   const tasks = await readCollection<any>("tasks");
   const deliverables = await readCollection<any>("deliverables");
-  const review = body.id ? reviews.find((item) => item.id === body.id) : reviews.find((item) => item.task_id === body.task_id);
+  const review = body.id
+    ? reviews.find((item) => item.id === body.id)
+    : reviews.find((item) => item.task_id === body.task_id);
   if (!review) return fail("review not found", 404);
 
   const taskId = String(review.task_id);
@@ -91,7 +93,7 @@ export async function PATCH(request: Request) {
       updated_at: new Date().toISOString()
     };
     projectEventTitle = "复核要求修改";
-    projectEventDescription = `${task.title} 被打回继续修改。`;
+    projectEventDescription = `${task.title} 已被打回继续修改。`;
   } else if (status === "require_boss_approval") {
     taskPatch = {
       status: "review",

@@ -42,7 +42,7 @@ export async function POST(request: Request) {
       id: crypto.randomUUID(),
       task_id: taskPayload.id,
       status: "pending",
-      decision_note: "�߷���������Ҫ������������",
+      decision_note: "高风险任务需要确认后再执行。",
       created_at: new Date().toISOString(),
       decided_at: null
     });
@@ -73,7 +73,11 @@ export async function PATCH(request: Request) {
       ? [
           ...(currentTask.outputs ?? []),
           {
-            agentId: (body.append_output as Record<string, unknown>).agentId ?? currentTask.assigned_agent_id ?? currentTask.assignedAgentId ?? "owner",
+            agentId:
+              (body.append_output as Record<string, unknown>).agentId ??
+              currentTask.assigned_agent_id ??
+              currentTask.assignedAgentId ??
+              "owner",
             content: String((body.append_output as Record<string, unknown>).content ?? ""),
             createdAt: new Date().toISOString()
           }
@@ -81,9 +85,12 @@ export async function PATCH(request: Request) {
       : undefined;
 
   const status = typeof body.status === "string" ? body.status : boardStatus;
-  const reviewStatus =
-    boardStatus === "review" ? "pending" : typeof body.review_status === "string" ? body.review_status : undefined;
-  const { id: _id, append_output: _appendOutput, ...bodyWithoutId } = cleanEmptyRelations(body, ["project_id", "assigned_agent_id", "parent_task_id"]);
+  const reviewStatus = boardStatus === "review" ? "pending" : typeof body.review_status === "string" ? body.review_status : undefined;
+  const { id: _id, append_output: _appendOutput, ...bodyWithoutId } = cleanEmptyRelations(body, [
+    "project_id",
+    "assigned_agent_id",
+    "parent_task_id"
+  ]);
   const patch = {
     ...bodyWithoutId,
     ...(nextOutputs ? { outputs: nextOutputs } : {}),
@@ -107,11 +114,11 @@ export async function PATCH(request: Request) {
         status: "pending",
         score: null,
         checklist: [
-          { label: "�����������Ŀ��", passed: false },
-          { label: "����������״̬�Ѵ���", passed: false },
-          { label: "���Խ����������˻�ͻ�", passed: false }
+          { label: "结果是否覆盖任务目标", passed: false },
+          { label: "数据和状态是否一致", passed: false },
+          { label: "是否存在风险或外部动作冲突", passed: false }
         ],
-        notes: "�����ѽ��븴�˶��С�",
+        notes: "任务已进入复核队列。",
         created_at: new Date().toISOString(),
         decided_at: null
       });
@@ -125,8 +132,8 @@ export async function PATCH(request: Request) {
     agent_id: task.assigned_agent_id ?? task.assignedAgentId ?? null,
     type: "action",
     content: boardStatus
-      ? `�����Ѵ� ${currentTask.board_status ?? currentTask.boardStatus ?? currentTask.status} �ƶ��� ${boardStatus}`
-      : "������Ϣ�Ѹ���",
+      ? `任务已从 ${currentTask.board_status ?? currentTask.boardStatus ?? currentTask.status} 移动到 ${boardStatus}`
+      : "任务信息已更新",
     metadata: { source: "local_tasks_patch" },
     created_at: new Date().toISOString()
   });

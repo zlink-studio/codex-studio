@@ -13,3 +13,9 @@ tools/openclaw-prefix
 tools/*.zip
 tools/*.log
 tools/*.err.log
+*.log
+*.err.log
+outputs/
+work/
+ui-check/
+.claude/

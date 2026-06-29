@@ -45,14 +45,16 @@ const labelMap: Record<string, string> = {
   in_progress: "执行中",
   review: "待复核",
   blocked: "已阻塞",
-  waiting_boss_approval: "待老板审批",
+  waiting_boss_approval: "待确认",
   done: "已完成",
-  cancelled: "已取消"
+  cancelled: "已取消",
+  default: "状态"
 };
 
 export function StatusBadge({ value, label }: { value: BadgeTone; label?: string }) {
+  const tone = toneClass[value] ? value : "default";
   return (
-    <span className={cn("inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold", toneClass[value])}>
+    <span className={cn("inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold", toneClass[tone])}>
       {label ?? labelMap[value] ?? value}
     </span>
   );

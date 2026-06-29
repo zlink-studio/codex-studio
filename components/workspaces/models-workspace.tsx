@@ -1,9 +1,10 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, CircleDollarSign, DatabaseZap, FlaskConical, GitBranch, Loader2, ShieldAlert } from "lucide-react";
+import { CheckCircle2, ChevronDown, CircleDollarSign, DatabaseZap, FlaskConical, GitBranch, Loader2, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Panel } from "@/components/panel";
+import { CollapsiblePanel } from "@/components/collapsible-panel";
 import { normalizeModelCatalogItem, normalizeModelPolicy, normalizeModelProvider, normalizeModelRun, readApiData } from "@/lib/client-normalizers";
 import type { ModelCatalogItem, ModelPolicy, ModelProvider, ModelProviderName, ModelRunSummary } from "@/lib/types";
 import { cn } from "@/lib/utils";
@@ -153,7 +154,6 @@ export function ModelsWorkspace() {
       <PageHeader
         eyebrow="模型"
         title="模型管理中心"
-        description="统一管理 LLM 服务商、模型目录、路由策略和调用记录。当前支持 OpenAI API、本机 Codex/OpenClaw 网关和手动桥接，其他服务商先保持占位。"
         action={<span className="rounded-md border border-line bg-[#fbfcf8] px-3 py-2 text-sm text-moss">{message}</span>}
       />
 
@@ -178,32 +178,15 @@ export function ModelsWorkspace() {
 
       <section className="mt-6">
         {activeTab === "providers" && (
-          <Panel title="模型服务商" description="这里展示连接状态和配置入口，不展示任何 API Key。">
+          <Panel title="模型服务商">
             <div className="grid gap-3 lg:grid-cols-2">
               {providers.map((provider) => (
-                <article key={provider.name} className="rounded-lg border border-line bg-paper p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <h3 className="font-semibold text-ink">{provider.displayName}</h3>
-                      <p className="mt-1 text-sm text-moss">{provider.name}</p>
-                    </div>
-                    <StatusPill value={provider.status} />
-                  </div>
-                  <div className="mt-4 space-y-2 text-sm text-moss">
-                    <p>Env: {provider.apiKeyEnv}</p>
-                    <p>Base URL: {provider.baseUrl ?? "由环境变量或 SDK 决定"}</p>
-                    <p>状态: {provider.enabled ? "已启用" : "已停用"}</p>
-                    <p>{provider.notes}</p>
-                  </div>
-                  <button
-                    onClick={() => testProvider(provider)}
-                    disabled={testingProvider === provider.name}
-                    className="mt-4 inline-flex items-center gap-2 rounded-md bg-moss px-3 py-2 text-sm font-semibold text-paper disabled:opacity-60"
-                  >
-                    {testingProvider === provider.name ? <Loader2 size={16} className="animate-spin" /> : <FlaskConical size={16} />}
-                    测试连接
-                  </button>
-                </article>
+                <ProviderCard
+                  key={provider.name}
+                  provider={provider}
+                  testing={testingProvider === provider.name}
+                  onTest={() => testProvider(provider)}
+                />
               ))}
             </div>
           </Panel>
@@ -244,7 +227,11 @@ export function ModelsWorkspace() {
 
         {activeTab === "policies" && (
           <section className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
-            <Panel title="新建策略" description="策略会被 Agent 角色、任务类型和风险等级自动匹配。">
+            <CollapsiblePanel
+              title="新建策略"
+              description="策略会被 Agent 角色、任务类型和风险等级自动匹配。"
+              defaultOpen={false}
+            >
               <form className="grid gap-4 md:grid-cols-2" onSubmit={createPolicy}>
                 <Field label="策略名" value={form.name} onChange={(value) => setForm({ ...form, name: value })} placeholder="例如: finance_review" required />
                 <Field label="说明" value={form.description} onChange={(value) => setForm({ ...form, description: value })} placeholder="适用场景" />
@@ -259,7 +246,7 @@ export function ModelsWorkspace() {
                 <Select label="Cost Level" value={form.cost_level} onChange={(value) => setForm({ ...form, cost_level: value })} options={["low", "medium", "high"]} />
                 <button className="rounded-md bg-moss px-4 py-2 text-sm font-semibold text-paper md:self-end">保存策略</button>
               </form>
-            </Panel>
+            </CollapsiblePanel>
 
             <Panel title="路由策略" description="基础规则：高风险和 leader 使用强模型；内容任务走创意策略；简单事务走低成本策略。">
               <div className="space-y-3">
@@ -404,6 +391,54 @@ function Select({ label, value, onChange, options }: { label: string; value: str
         ))}
       </select>
     </label>
+  );
+}
+
+function ProviderCard({
+  provider,
+  testing,
+  onTest
+}: {
+  provider: ModelProvider;
+  testing: boolean;
+  onTest: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  return (
+    <article className="rounded-lg border border-line bg-paper">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-3 px-4 py-3 text-left"
+        aria-expanded={open}
+      >
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span className="truncate font-semibold text-ink">{provider.displayName}</span>
+            <StatusPill value={provider.status} />
+          </span>
+          <span className="mt-0.5 block truncate text-xs text-moss">{provider.name}</span>
+        </span>
+        <ChevronDown size={18} className={cn("shrink-0 text-moss transition-transform", open ? "rotate-180" : "")} />
+      </button>
+      {open ? (
+        <div className="border-t border-line/70 px-4 py-3">
+          <div className="space-y-1.5 text-sm text-moss">
+            <p>Env: {provider.apiKeyEnv}</p>
+            <p>Base URL: {provider.baseUrl ?? "由环境变量或 SDK 决定"}</p>
+            {provider.notes ? <p>{provider.notes}</p> : null}
+          </div>
+          <button
+            onClick={onTest}
+            disabled={testing}
+            className="mt-3 inline-flex items-center gap-2 rounded-md bg-moss px-3 py-2 text-sm font-semibold text-paper disabled:opacity-60"
+          >
+            {testing ? <Loader2 size={16} className="animate-spin" /> : <FlaskConical size={16} />}
+            测试连接
+          </button>
+        </div>
+      ) : null}
+    </article>
   );
 }
 

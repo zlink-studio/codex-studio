@@ -2,6 +2,21 @@ import type { Agent, AgentSkill, KnowledgeSource, Memory, MemoryAccessLog, Memor
 
 type AnyRow = Record<string, any>;
 
+// 模型偶尔会把本该是字符串的字段（objective / brief 等）输出成嵌套对象，
+// 直接渲染会让 React 崩溃。这里统一把任何非字符串值压平成可读文本。
+export function toText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map((item) => toText(item)).filter(Boolean).join("\n");
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, val]) => `${key}：${toText(val)}`)
+      .join("\n");
+  }
+  return String(value);
+}
+
 export function normalizeAgent(row: AnyRow): Agent {
   return {
     id: row.id,
@@ -37,11 +52,11 @@ export function normalizeProject(row: AnyRow): Project {
 
   return {
     id: row.id,
-    name: row.name,
-    clientName: row.clientName ?? row.client_name,
-    objective: row.objective,
-    clientProfile: row.clientProfile ?? row.client_profile ?? "",
-    brief: row.brief ?? null,
+    name: toText(row.name),
+    clientName: toText(row.clientName ?? row.client_name),
+    objective: toText(row.objective),
+    clientProfile: toText(row.clientProfile ?? row.client_profile ?? ""),
+    brief: row.brief === null || row.brief === undefined ? null : toText(row.brief),
     progress: Number(row.progress ?? 0),
     stage: row.stage ?? "planning",
     riskLevel: row.riskLevel ?? row.risk_level ?? "low",

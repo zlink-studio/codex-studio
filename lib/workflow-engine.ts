@@ -74,7 +74,25 @@ type AgentRunExecutionResult = {
   log: AnyRow;
   deliverables: Deliverable[];
   warning?: string;
+  reviews?: AnyRow[];
 };
+
+type AutoReviewContext = {
+  riskNotes?: string;
+  reviewNotes?: string;
+  needsBossApproval?: boolean;
+  hasActionSkill?: boolean;
+};
+
+type ReviewStepResult = {
+  decision: "approved" | "request_changes" | "blocked";
+  score: number | null;
+  checklist: Array<{ label: string; passed: boolean }>;
+  notes: string;
+  review: AnyRow;
+};
+
+const MAX_AUTO_REVIEW_ATTEMPTS = 2;
 
 const STATUS_PROGRESS: Record<string, number> = {
   done: 100,
@@ -257,7 +275,11 @@ export async function createTasksForProject(input: {
   };
 }
 
-export async function executeAgentRun(taskId: string, preferredAgentId?: string | null): Promise<AgentRunExecutionResult> {
+export async function executeAgentRun(
+  taskId: string,
+  preferredAgentId?: string | null,
+  reviewAttempt = 0
+): Promise<AgentRunExecutionResult> {
   const [tasks, projects, agents, agentSkills, skills, skillReviews] = await Promise.all([
     readCollection<AnyRow>("tasks"),
     readCollection<AnyRow>("projects"),
@@ -352,11 +374,25 @@ export async function executeAgentRun(taskId: string, preferredAgentId?: string 
     relatedAgentId: assignedAgent.id
   }).catch(() => null);
 
+  let reworkNote: string | null = null;
+  if (task.review_status === "rejected") {
+    const taskLogs = await readCollection<AnyRow>("task-logs");
+    const lastReview = taskLogs
+      .filter((log) => log.task_id === task.id && log.type === "review")
+      .sort((left, right) => String(right.created_at).localeCompare(String(left.created_at)))[0];
+    if (lastReview?.content) {
+      reworkNote = String(lastReview.content);
+    }
+  }
+
+  // 可视化 HTML 报告比较占 token，给执行调用一个下限，避免报告被截断。
+  const executionMaxTokens = Math.max(Number(selectedPolicy.maxTokens ?? 0) || 0, 6000);
+
   const llmResult = await runLLM({
     provider: selectedPolicy.primaryProvider,
     model: selectedPolicy.primaryModel,
     temperature: selectedPolicy.temperature,
-    maxTokens: selectedPolicy.maxTokens,
+    maxTokens: executionMaxTokens,
     responseFormat: "json_object",
     metadata: {
       task_id: task.id,
@@ -366,8 +402,14 @@ export async function executeAgentRun(taskId: string, preferredAgentId?: string 
     messages: [
       {
         role: "system",
-        content:
-          "你是项目执行员工。请严格输出 JSON，对任务给出结果、交付物内容、风险说明和下一状态建议。不要执行任何外部动作。"
+        content: [
+          "你是项目执行员工。请严格输出 JSON，对任务给出结果、交付物内容、风险说明和下一状态建议。不要执行任何外部动作。",
+          "若任务属于分析 / 报告 / 市场背调 / 策略方案 / 发布排期 / 投放规划类，至少产出一个 type 为 \"html\" 的可视化报告交付物：",
+          "- 必须是自包含、可直接在浏览器打开的完整 HTML（含 <!doctype html> 与内联 <style>，不要引用任何外部 CDN/JS）。",
+          "- 用语义化排版 + 简单可视化呈现关键数据：用纯 CSS/内联 SVG 画条形图、占比条、对比表格、时间线或排期日历表，不要依赖外部图表库。",
+          "- 面向交付给客户：专业、有标题层级、有结论摘要、有数据支撑，中文撰写（除非客户资料是英文）。",
+          "可以同时再产出一个 type 为 \"markdown\" 的文字版本，便于编辑。"
+        ].join("\n")
       },
       {
         role: "user",
@@ -376,11 +418,13 @@ export async function executeAgentRun(taskId: string, preferredAgentId?: string 
           `Project Brief：${project?.brief ?? project?.objective ?? ""}`,
           `任务标题：${task.title}`,
           `任务描述：${task.description}`,
+          `任务类型：${task.task_type ?? "general"}`,
           `输入要求：${task.input_requirements ?? "无"}`,
           `输出要求：${task.output_requirements ?? "无"}`,
           `技能：${selectedSkillRows.map((item) => item.slug).join(", ") || "无"}`,
           `记忆：\n${memoryText}`,
-          '请输出 JSON: {"summary":"","result":"","deliverables":[{"title":"","type":"markdown","content":"","is_file":true}],"risk_notes":"","needs_boss_approval":false,"review_notes":""}'
+          ...(reworkNote ? [`上一轮复核意见（请据此修改）：${reworkNote}`] : []),
+          '请输出 JSON: {"summary":"","result":"","deliverables":[{"title":"可视化报告标题","type":"html","content":"<!doctype html>...完整HTML...","is_file":true}],"risk_notes":"","needs_boss_approval":false,"review_notes":""}'
         ].join("\n\n")
       }
     ]
@@ -548,7 +592,7 @@ export async function executeAgentRun(taskId: string, preferredAgentId?: string 
 
   await syncProjectState(project?.id ?? null);
 
-  return {
+  const baseResult: AgentRunExecutionResult = {
     task: updatedTask,
     project: project?.id ? await readProject(project.id) : null,
     agentRun: updatedAgentRun ?? agentRun,
@@ -559,6 +603,305 @@ export async function executeAgentRun(taskId: string, preferredAgentId?: string 
     warning: shouldHoldExternalAction
       ? "This run included external-action skills, so the system produced results and drafts but did not directly publish, send, or mutate external systems."
       : undefined
+  };
+
+  return runAutoQualityReview(
+    task.id,
+    baseResult,
+    {
+      riskNotes: parsed.risk_notes,
+      reviewNotes: parsed.review_notes,
+      needsBossApproval: Boolean(parsed.needs_boss_approval),
+      hasActionSkill
+    },
+    reviewAttempt
+  );
+}
+
+async function runAutoQualityReview(
+  taskId: string,
+  baseResult: AgentRunExecutionResult,
+  context: AutoReviewContext,
+  attempt = 0
+): Promise<AgentRunExecutionResult> {
+  const [tasks, projects, agents, deliverablesAll] = await Promise.all([
+    readCollection<AnyRow>("tasks"),
+    readCollection<AnyRow>("projects"),
+    readCollection<AnyRow>("agents"),
+    readCollection<AnyRow>("deliverables")
+  ]);
+
+  const task = tasks.find((item) => item.id === taskId);
+  if (!task) return { ...baseResult, reviews: [] };
+  const project = projects.find((item) => item.id === task.project_id) ?? null;
+  const deliverables = deliverablesAll.filter((item) => item.task_id === taskId);
+  const reviews: AnyRow[] = [];
+
+  const reviewerAgent =
+    agents.find((item) => (item.agent_role ?? item.agentRole) === "reviewer") ??
+    agents.find((item) => (item.agent_role ?? item.agentRole) === "leader") ??
+    agents[0];
+
+  const qualityStep = await runReviewStep("reviewer", reviewerAgent, task, project, deliverables, context);
+  reviews.push(qualityStep.review);
+
+  if (qualityStep.decision === "request_changes") {
+    if (attempt < MAX_AUTO_REVIEW_ATTEMPTS) {
+      const now = new Date().toISOString();
+      await patchCollectionItem<any>("tasks", taskId, {
+        status: "in_progress",
+        board_status: "in_progress",
+        review_status: "rejected",
+        rework_count: Number(task.rework_count ?? 0) + 1,
+        updated_at: now
+      });
+      await appendCollectionItem("task-logs", {
+        id: crypto.randomUUID(),
+        task_id: taskId,
+        agent_id: reviewerAgent?.id ?? null,
+        run_id: null,
+        type: "review",
+        content: `AI 复核：需要修改 - ${qualityStep.notes}`,
+        metadata: { review_status: "rejected", attempt },
+        created_at: now
+      });
+      await appendProjectLog({
+        projectId: project?.id ?? "",
+        eventType: "review_completed",
+        title: "AI 复核：需要修改，自动安排返工",
+        description: `${task.title}：${qualityStep.notes}`,
+        relatedTaskId: taskId,
+        relatedAgentId: reviewerAgent?.id ?? null
+      });
+      await syncProjectState(project?.id ?? null);
+
+      const rerun = await executeAgentRun(taskId, undefined, attempt + 1);
+      return { ...rerun, reviews: [...reviews, ...(rerun.reviews ?? [])] };
+    }
+
+    const hasUsableDeliverable = deliverables.length > 0;
+    const shouldBlock =
+      task.risk_level === "high" ||
+      task.risk_level === "critical" ||
+      Boolean(context.hasActionSkill) ||
+      Boolean(context.needsBossApproval) ||
+      !hasUsableDeliverable;
+    const finalState = await finalizeTask(
+      task,
+      project,
+      shouldBlock ? "blocked" : "done",
+      shouldBlock
+        ? qualityStep.notes
+        : `自动返工已达到上限，但已有可用交付物，系统先归档完成。复核建议：${qualityStep.notes}`,
+      reviewerAgent,
+      shouldBlock ? "task_blocked" : "review_completed",
+      shouldBlock ? "AI 多轮复核未通过，转人工处理" : "AI 复核完成，带改进建议归档"
+    );
+    return { ...baseResult, task: finalState.task, project: finalState.project, reviews };
+  }
+
+  const needsFinalSignoff =
+    task.risk_level === "high" || task.risk_level === "critical" || Boolean(context.hasActionSkill) || Boolean(context.needsBossApproval);
+
+  if (needsFinalSignoff) {
+    const leaderAgent = agents.find((item) => (item.agent_role ?? item.agentRole) === "leader") ?? reviewerAgent;
+    const signoffStep = await runReviewStep("leader", leaderAgent, task, project, deliverables, context, qualityStep);
+    reviews.push(signoffStep.review);
+
+    if (signoffStep.decision === "blocked") {
+      const finalState = await finalizeTask(
+        task,
+        project,
+        "blocked",
+        signoffStep.notes,
+        leaderAgent,
+        "task_blocked",
+        "AI 执行负责人暂缓该任务"
+      );
+      return { ...baseResult, task: finalState.task, project: finalState.project, reviews };
+    }
+  }
+
+  const finalState = await finalizeTask(task, project, "done", qualityStep.notes, reviewerAgent, "review_completed", "AI 复核通过");
+  return { ...baseResult, task: finalState.task, project: finalState.project, reviews };
+}
+
+async function runReviewStep(
+  role: "reviewer" | "leader",
+  agent: AnyRow | undefined,
+  task: AnyRow,
+  project: AnyRow | null,
+  deliverables: AnyRow[],
+  context: AutoReviewContext,
+  priorStep?: ReviewStepResult
+): Promise<ReviewStepResult> {
+  const policy = resolveModelPolicy({
+    agent: agent ? normalizeAgentRow(agent) : null,
+    taskType: task.task_type,
+    riskLevel: task.risk_level,
+    preferredPolicy: agent?.preferred_model_policy ?? agent?.preferredModelPolicy ?? null
+  });
+
+  const deliverableSummary =
+    deliverables.map((item) => `### ${item.title}\n${String(item.content ?? "").slice(0, 1500)}`).join("\n\n") || "（无交付物）";
+
+  const systemPrompt =
+    role === "reviewer"
+      ? '你是质量复核 Agent，代表项目负责人对任务结果做验收。基于任务的输出要求、执行结果与交付物内容判断是否合格，如果基本满足要求就应判定通过，不要过度苛求。请输出 JSON：{"decision":"approved"|"request_changes","score":0,"checklist":[{"label":"","passed":true}],"notes":""}'
+      : '你是执行负责人 Agent，代表公司最高决策者对高风险或涉及外部动作的任务结果做最终签批。除非存在明显且严重的问题，应当批准放行。请输出 JSON：{"decision":"approved"|"blocked","notes":""}';
+
+  const userPromptParts = [
+    `项目：${project?.name ?? "未命名项目"}`,
+    `任务：${task.title}`,
+    `任务说明：${task.description}`,
+    `输出要求：${task.output_requirements ?? "无"}`,
+    `风险等级：${task.risk_level}`,
+    `执行结果：\n${task.result ?? "无"}`,
+    `交付物：\n${deliverableSummary}`,
+    `执行过程备注：风险说明=${context.riskNotes ?? "无"}；复核建议=${context.reviewNotes ?? "无"}`
+  ];
+  if (role === "leader" && priorStep) {
+    userPromptParts.push(`质量复核结论：${priorStep.decision}，得分 ${priorStep.score ?? "无"}，备注：${priorStep.notes}`);
+  }
+
+  const llmResult = await runLLM({
+    provider: policy.primaryProvider,
+    model: policy.primaryModel,
+    temperature: policy.temperature,
+    maxTokens: policy.maxTokens,
+    responseFormat: "json_object",
+    metadata: {
+      task_id: task.id,
+      project_id: project?.id ?? null,
+      policy: policy.name,
+      review_role: role
+    },
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPromptParts.join("\n\n") }
+    ]
+  });
+
+  let decision: ReviewStepResult["decision"] = "approved";
+  let score: number | null = null;
+  let checklist: Array<{ label: string; passed: boolean }> = [];
+  let notes = "";
+
+  try {
+    const parsed = JSON.parse(extractJson(llmResult.content));
+    const rawDecision = String(parsed.decision ?? "approved");
+    decision =
+      role === "leader"
+        ? rawDecision === "blocked"
+          ? "blocked"
+          : "approved"
+        : ["approved", "request_changes", "blocked"].includes(rawDecision)
+          ? (rawDecision as ReviewStepResult["decision"])
+          : "approved";
+    score = typeof parsed.score === "number" ? parsed.score : null;
+    checklist = Array.isArray(parsed.checklist) ? parsed.checklist : [];
+    notes = String(parsed.notes ?? "");
+  } catch {
+    decision = "approved";
+    notes = "AI 复核结果解析失败，按通过处理。";
+  }
+
+  if (!notes) notes = decision === "approved" ? "复核通过。" : "需要修改。";
+  if (role === "leader") notes = `[最终签批] ${notes}`;
+
+  const now = new Date().toISOString();
+  const review = {
+    id: crypto.randomUUID(),
+    task_id: task.id,
+    reviewer_agent_id: agent?.id ?? null,
+    status: decision === "approved" ? "approved" : "rejected",
+    score,
+    checklist,
+    notes,
+    created_at: now,
+    decided_at: now
+  };
+  await appendCollectionItem("quality-reviews", review);
+
+  await appendCollectionItem("model-runs", {
+    id: crypto.randomUUID(),
+    agent_run_id: null,
+    task_id: task.id,
+    project_id: project?.id ?? null,
+    agent_id: agent?.id ?? null,
+    policy_name: policy.name,
+    provider: llmResult.provider,
+    model: llmResult.model,
+    input_tokens: llmResult.inputTokens,
+    output_tokens: llmResult.outputTokens,
+    estimated_cost: llmResult.estimatedCost,
+    latency_ms: llmResult.latencyMs,
+    status: llmResult.status === "failed" ? "fallback" : "success",
+    error: llmResult.error ?? null,
+    created_at: now
+  });
+
+  return { decision, score, checklist, notes, review };
+}
+
+async function finalizeTask(
+  task: AnyRow,
+  project: AnyRow | null,
+  finalStatus: "done" | "blocked",
+  notes: string,
+  agent: AnyRow | undefined,
+  eventType: ProjectLogEventType,
+  title: string
+) {
+  const now = new Date().toISOString();
+
+  if (finalStatus === "done") {
+    await patchCollectionItem<any>("tasks", task.id, {
+      status: "done",
+      board_status: "done",
+      review_status: "approved",
+      approval_status: "not_required",
+      approval_required: false,
+      updated_at: now
+    });
+    const deliverables = (await readCollection<AnyRow>("deliverables")).filter((item) => item.task_id === task.id);
+    for (const deliverable of deliverables) {
+      await patchCollectionItem<any>("deliverables", deliverable.id, { status: "approved", updated_at: now });
+    }
+  } else {
+    await patchCollectionItem<any>("tasks", task.id, {
+      status: "blocked",
+      board_status: "blocked",
+      review_status: "rejected",
+      updated_at: now
+    });
+  }
+
+  await appendCollectionItem("task-logs", {
+    id: crypto.randomUUID(),
+    task_id: task.id,
+    agent_id: agent?.id ?? null,
+    run_id: null,
+    type: "review",
+    content: `${title}：${notes}`.trim(),
+    metadata: { review_status: finalStatus === "done" ? "approved" : "rejected" },
+    created_at: now
+  });
+  await appendProjectLog({
+    projectId: project?.id ?? "",
+    eventType,
+    title,
+    description: `${task.title}：${notes}`,
+    relatedTaskId: task.id,
+    relatedAgentId: agent?.id ?? null
+  });
+  await syncProjectState(project?.id ?? null);
+
+  const tasks = await readCollection<AnyRow>("tasks");
+  const updatedTask = tasks.find((item) => item.id === task.id) ?? task;
+  return {
+    task: updatedTask,
+    project: project?.id ? await readProject(project.id) : null
   };
 }
 
@@ -584,10 +927,43 @@ export async function runProjectCycle(projectId: string, limit = 3) {
   await appendProjectLog({
     projectId,
     eventType: "task_started",
-    title: "?????????",
-    description: `????? ${results.length} ????`
+    title: "项目执行周期已运行",
+    description: `本轮共执行 ${results.length} 条任务。`
   });
   return results;
+}
+
+const RUNNABLE_TASK_STATUSES = ["todo", "in_progress", "review"];
+
+/**
+ * 连续运行执行周期，直到项目里没有可运行任务（全部 done / blocked）或达到周期上限。
+ * 这是"说任务 → 直接给结果"的项目级闭环入口：每个任务都会被执行、自动复核并落地。
+ */
+export async function runProjectToCompletion(
+  projectId: string,
+  options: { cycleLimit?: number; maxCycles?: number } = {}
+) {
+  const cycleLimit = options.cycleLimit ?? 3;
+  const allResults: AgentRunExecutionResult[] = [];
+
+  const initialTasks = await getProjectTasks(projectId);
+  const runnableCount = initialTasks.filter((task) => RUNNABLE_TASK_STATUSES.includes(task.status)).length;
+  // 给每个可运行任务预留若干周期裕量（含可能的返工），并设一个硬上限避免失控。
+  const maxCycles = options.maxCycles ?? Math.min(20, Math.ceil(runnableCount / cycleLimit) + 3);
+
+  for (let cycle = 0; cycle < maxCycles; cycle += 1) {
+    const tasks = await getProjectTasks(projectId);
+    const hasRunnable = tasks.some((task) => RUNNABLE_TASK_STATUSES.includes(task.status));
+    if (!hasRunnable) break;
+
+    const cycleResults = await runProjectCycle(projectId, cycleLimit);
+    allResults.push(...cycleResults);
+    // runProjectCycle 没有可执行任务时返回空数组，防止空转死循环。
+    if (!cycleResults.length) break;
+  }
+
+  await syncProjectState(projectId);
+  return allResults;
 }
 
 export async function getProjectDetail(projectId: string): Promise<ProjectDetailPayload> {
@@ -809,20 +1185,6 @@ async function createDeliverable(input: {
     relatedDeliverableId: deliverable.id
   });
   return deliverable;
-}
-
-async function ensurePendingApproval(taskId: string) {
-  const approvals = await readCollection<AnyRow>("approvals");
-  const existing = approvals.find((item) => item.task_id === taskId && item.status === "pending");
-  if (existing) return existing;
-  return appendCollectionItem("approvals", {
-    id: crypto.randomUUID(),
-    task_id: taskId,
-    status: "pending",
-    decision_note: "等待老板审批后继续。",
-    created_at: new Date().toISOString(),
-    decided_at: null
-  });
 }
 
 async function generateProjectBrief(input: { goal: string; project: AnyRow | null }) {
@@ -1118,8 +1480,8 @@ function serializeDeliverable(deliverable: Deliverable) {
 function normalizeTaskRow(row: AnyRow): Task {
   return {
     id: row.id,
-    title: row.title,
-    description: row.description,
+    title: coerceText(row.title),
+    description: coerceText(row.description),
     taskType: row.task_type ?? row.taskType ?? "general",
     suggestedSkills: row.suggested_skills ?? row.suggestedSkills ?? [],
     clientName: row.client_name ?? row.clientName ?? null,
@@ -1137,13 +1499,14 @@ function normalizeTaskRow(row: AnyRow): Task {
     modelPolicy: row.model_policy ?? row.modelPolicy ?? null,
     inputRequirements: row.input_requirements ?? row.inputRequirements ?? null,
     outputRequirements: row.output_requirements ?? row.outputRequirements ?? null,
-    result: row.result ?? null,
+    result: row.result === null || row.result === undefined ? null : coerceText(row.result),
     estimatedCost: Number(row.estimated_cost ?? row.estimatedCost ?? 0),
     actualCost: Number(row.actual_cost ?? row.actualCost ?? 0),
     parentTaskId: row.parent_task_id ?? row.parentTaskId ?? null,
     sortOrder: Number(row.sort_order ?? row.sortOrder ?? 0),
     usedMemoryIds: row.used_memory_ids ?? row.usedMemoryIds ?? [],
     modelRun: row.model_run ?? row.modelRun ?? null,
+    reworkCount: Number(row.rework_count ?? row.reworkCount ?? 0),
     outputs: row.outputs ?? []
   };
 }
@@ -1176,14 +1539,28 @@ function normalizeAgentRow(row: AnyRow): Agent {
   };
 }
 
+// 模型偶尔会把字符串字段输出成嵌套对象，渲染前压平成可读文本，避免前端崩溃。
+function coerceText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) return value.map((item) => coerceText(item)).filter(Boolean).join("\n");
+  if (typeof value === "object") {
+    return Object.entries(value as Record<string, unknown>)
+      .map(([key, val]) => `${key}：${coerceText(val)}`)
+      .join("\n");
+  }
+  return String(value);
+}
+
 function normalizeProjectRow(row: AnyRow): Project {
   return {
     id: row.id,
-    name: row.name,
-    clientName: row.client_name ?? row.clientName ?? "",
-    objective: row.objective,
-    clientProfile: row.client_profile ?? row.clientProfile ?? "",
-    brief: row.brief ?? null,
+    name: coerceText(row.name),
+    clientName: coerceText(row.client_name ?? row.clientName ?? ""),
+    objective: coerceText(row.objective),
+    clientProfile: coerceText(row.client_profile ?? row.clientProfile ?? ""),
+    brief: row.brief === null || row.brief === undefined ? null : coerceText(row.brief),
     progress: Number(row.progress ?? 0),
     stage: row.stage ?? "planning",
     riskLevel: row.risk_level ?? row.riskLevel ?? "low",

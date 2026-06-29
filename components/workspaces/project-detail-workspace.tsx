@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowLeft, Download, PlayCircle, ShieldAlert } from "lucide-react";
+import { ArrowLeft, Clock, Download, Eye, FileText, PlayCircle, Rocket, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Panel } from "@/components/panel";
+import { CollapsiblePanel } from "@/components/collapsible-panel";
 import { ProgressBar } from "@/components/progress-bar";
 import { StatusBadge } from "@/components/status-badge";
 import { readApiData } from "@/lib/client-normalizers";
+import { cn } from "@/lib/utils";
 import type { Deliverable, Project, ProjectLog, Task } from "@/lib/types";
 
 type ProjectDetailResponse = {
@@ -48,9 +50,7 @@ export function ProjectDetailWorkspace({ projectId }: { projectId: string }) {
 
   const loadData = useCallback(async () => {
     try {
-      const data = await readApiData<ProjectDetailResponse>(
-        await fetch(`/api/projects/${projectId}/detail`)
-      );
+      const data = await readApiData<ProjectDetailResponse>(await fetch(`/api/projects/${projectId}/detail`));
       setDetail(data);
       setMessage("项目详情已同步。");
     } catch (error) {
@@ -62,11 +62,21 @@ export function ProjectDetailWorkspace({ projectId }: { projectId: string }) {
     void loadData();
   }, [loadData]);
 
+  const hasRunningWork = (detail?.tasks ?? []).some((task) => ["todo", "in_progress", "review"].includes(task.status));
+
+  useEffect(() => {
+    if (!hasRunningWork) return;
+    const timer = setInterval(() => {
+      void loadData();
+    }, 6000);
+    return () => clearInterval(timer);
+  }, [hasRunningWork, loadData]);
+
   const project = detail?.project;
   const latestAgentRun = detail?.agentRuns?.[0] ?? null;
   const latestReview = detail?.projectLogs.find((log) => log.eventType === "review_completed") ?? null;
-
   const taskTimeline = useMemo(() => (detail?.projectLogs ?? []).slice(0, 12), [detail?.projectLogs]);
+  const hasRunnable = (detail?.tasks ?? []).some((task) => ["todo", "in_progress", "review"].includes(task.status));
 
   async function runTask(taskId: string) {
     setBusy(taskId);
@@ -80,7 +90,7 @@ export function ProjectDetailWorkspace({ projectId }: { projectId: string }) {
         })
       );
       await loadData();
-      setMessage("任务执行完成，已写入日志和交付物。");
+      setMessage("任务执行完成，结果、日志和交付物已写入。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "执行失败");
     } finally {
@@ -104,11 +114,11 @@ export function ProjectDetailWorkspace({ projectId }: { projectId: string }) {
 
   async function runProjectCycle() {
     setBusy("cycle");
-    setMessage("正在运行项目周期...");
+    setMessage("正在执行一个项目循环，最多推进 3 条任务。");
     try {
       await readApiData<any>(await fetch(`/api/projects/${projectId}/run-cycle`, { method: "POST" }));
       await loadData();
-      setMessage("本轮项目周期已执行完成。");
+      setMessage("项目循环已完成，请查看任务状态、日志和交付物。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "执行失败");
     } finally {
@@ -136,98 +146,129 @@ export function ProjectDetailWorkspace({ projectId }: { projectId: string }) {
       <PageHeader
         eyebrow="Project Detail"
         title={project.name}
-        description="从项目 brief、任务推进、员工执行、交付物到风险审批，这里展示完整闭环。"
+        description="这里是项目执行现场：任务是否真的在跑、谁在执行、日志有没有写入、交付物在哪，都集中展示。"
         action={
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              onClick={() => void runNextTask()}
-              disabled={busy !== null}
-              className="rounded-full border border-line/70 bg-paper px-4 py-2 text-sm font-semibold text-moss disabled:opacity-60"
-            >
-              Run Next Task
-            </button>
-            <button
-              type="button"
-              onClick={() => void runProjectCycle()}
-              disabled={busy !== null}
-              className="rounded-full bg-ink px-4 py-2 text-sm font-semibold text-paper disabled:opacity-60"
-            >
-              Run Project Cycle
-            </button>
             <Link
               href="/projects"
               className="inline-flex items-center gap-2 rounded-full border border-line/70 bg-paper px-4 py-2 text-sm font-semibold text-moss"
             >
               <ArrowLeft size={16} />
-              返回项目中心
+              返回
             </Link>
+            <button
+              type="button"
+              onClick={() => void runNextTask()}
+              disabled={busy !== null || !hasRunnable}
+              className="rounded-full border border-line/70 bg-paper px-4 py-2 text-sm font-semibold text-moss disabled:opacity-50"
+            >
+              {busy === "next" ? "执行中..." : "执行下一条"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void runProjectCycle()}
+              disabled={busy !== null || !hasRunnable}
+              className="inline-flex items-center gap-2 rounded-full bg-ink px-5 py-2 text-sm font-semibold text-paper shadow-[0_14px_32px_rgba(15,23,42,0.18)] disabled:opacity-50"
+            >
+              <Rocket size={16} />
+              {busy === "cycle" ? "执行中..." : hasRunnable ? "运行项目循环" : "已无待执行任务"}
+            </button>
           </div>
         }
       />
 
       <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <div className="space-y-6">
-          <Panel title="Project Brief" description={project.brief ?? "当前项目已进入执行链路。"}>
+          <Panel title="项目简报" description={project.brief ?? "当前项目已进入执行链路。"}>
+            <div className="mb-5">
+              <div className="mb-2 flex items-center justify-between text-sm">
+                <span className="font-medium text-ink">项目进度</span>
+                <span className="font-semibold text-ink">{project.progress}%</span>
+              </div>
+              <ProgressBar value={project.progress} />
+            </div>
+            <div className="mb-5 grid gap-3 sm:grid-cols-3 xl:grid-cols-6">
+              <Metric label="总任务" value={detail.metrics.total} />
+              <Metric label="已完成" value={detail.metrics.done} />
+              <Metric label="执行中" value={detail.metrics.inProgress} />
+              <Metric label="复核中" value={detail.metrics.review} />
+              <Metric label="阻塞" value={detail.metrics.blocked} />
+              <Metric label="待确认" value={detail.metrics.waitingBossApproval} />
+            </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <Detail label="项目名称" value={project.name} />
               <Detail label="客户背景" value={project.clientProfile || "暂无"} />
               <Detail label="项目目标" value={project.objective} />
               <Detail label="当前阶段" value={project.stage} />
               <Detail label="风险等级" value={project.riskLevel ?? "low"} />
-              <Detail label="截止时间" value={project.dueDate ?? "未设置"} />
-            </div>
-            <div className="mt-5">
-              <div className="mb-2 flex items-center justify-between text-sm">
-                <span className="font-medium text-ink">项目进度</span>
-                <span className="text-moss">{project.progress}%</span>
-              </div>
-              <ProgressBar value={project.progress} />
             </div>
           </Panel>
 
-          <Panel title="Execution Overview" description={message}>
-            <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-              <Metric label="总任务数" value={detail.metrics.total} />
-              <Metric label="已完成" value={detail.metrics.done} />
-              <Metric label="执行中" value={detail.metrics.inProgress} />
-              <Metric label="Review 中" value={detail.metrics.review} />
-              <Metric label="Blocked" value={detail.metrics.blocked} />
-              <Metric label="待老板审批" value={detail.metrics.waitingBossApproval} />
-            </div>
-          </Panel>
-
-          <Panel title="Task Timeline" description="按时间展示项目内最近发生的任务事件。">
-            <div className="space-y-3">
-              {taskTimeline.map((log) => (
-                <div key={log.id} className="rounded-[24px] border border-line/70 bg-paper/45 p-4">
-                  <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
-                    <div>
-                      <p className="font-semibold text-ink">{log.title}</p>
-                      <p className="mt-1 text-sm leading-6 text-moss">{log.description}</p>
-                    </div>
-                    <span className="text-xs text-moss">{formatTime(log.createdAt)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <CollapsiblePanel
+            title="执行过程"
+            description="时间线、参与员工、最近 Agent Run 和最近审核记录。"
+            icon={<Clock size={16} />}
+            defaultOpen
+            badge={<CountBadge n={detail.projectLogs.length} />}
+          >
+            <div className="mb-5 grid gap-4 md:grid-cols-2">
               <SmallCard
-                title="最近一次 Agent 执行"
+                title="最近 Agent 执行"
                 value={
                   latestAgentRun
-                    ? `${latestAgentRun.agent_id ?? "-"} / ${formatTime(latestAgentRun.finished_at ?? latestAgentRun.created_at)}`
+                    ? `${latestAgentRun.agent_id ?? latestAgentRun.agentId ?? "-"} / ${formatTime(latestAgentRun.finished_at ?? latestAgentRun.finishedAt ?? latestAgentRun.created_at ?? latestAgentRun.createdAt)}`
                     : "暂无"
                 }
               />
-              <SmallCard
-                title="最近一次审核"
-                value={latestReview ? `${latestReview.title} / ${formatTime(latestReview.createdAt)}` : "暂无"}
-              />
+              <SmallCard title="最近审核" value={latestReview ? `${latestReview.title} / ${formatTime(latestReview.createdAt)}` : "暂无"} />
             </div>
-          </Panel>
 
-          <Panel title="Deliverables" description="所有重要输出都会写入 deliverables，并保存到 outputs 目录。">
+            <p className="mb-2 text-sm font-semibold text-ink">项目日志</p>
+            <div className="space-y-3">
+              {taskTimeline.length === 0 ? (
+                <EmptyState text="暂无项目日志。" />
+              ) : (
+                taskTimeline.map((log) => (
+                  <div key={log.id} className="rounded-[20px] border border-line/70 bg-paper/45 p-4">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="font-semibold text-ink">{log.title}</p>
+                        <p className="mt-1 text-sm leading-6 text-moss">{log.description}</p>
+                      </div>
+                      <span className="text-xs text-moss">{formatTime(log.createdAt)}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <p className="mb-2 mt-5 text-sm font-semibold text-ink">参与员工</p>
+            <div className="space-y-3">
+              {detail.participatingAgents.length === 0 ? (
+                <EmptyState text="暂无参与员工。" />
+              ) : (
+                detail.participatingAgents.map((row) => (
+                  <div key={row.agent.id} className="rounded-[20px] border border-line/70 bg-paper/45 p-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-ink">{row.agent.name}</p>
+                        <p className="mt-1 text-sm text-moss">{row.agent.title}</p>
+                      </div>
+                      <span className="text-xs text-moss">{row.currentTask?.title ?? "当前无任务"}</span>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-moss">{row.recentOutput ?? "暂无最近产出"}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </CollapsiblePanel>
+
+          <CollapsiblePanel
+            title="交付物"
+            description="重要输出会写入 deliverables，并保存到 outputs 目录。"
+            icon={<FileText size={16} />}
+            defaultOpen
+            badge={<CountBadge n={detail.deliverables.length} />}
+          >
             {detail.deliverables.length === 0 ? (
               <EmptyState text="当前还没有交付物。" />
             ) : (
@@ -245,13 +286,22 @@ export function ProjectDetailWorkspace({ projectId }: { projectId: string }) {
                       <div className="flex flex-wrap gap-2">
                         <StatusBadge value={item.status === "approved" ? "done" : item.status === "review" ? "review" : "todo"} label={item.status} />
                         <a
+                          className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-semibold text-paper"
+                          href={`/api/deliverables/${item.id}/view`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <Eye size={14} />
+                          查看
+                        </a>
+                        <a
                           className="inline-flex items-center gap-2 rounded-full border border-line/70 bg-paper px-4 py-2 text-sm font-semibold text-moss"
                           href={`/api/deliverables/${item.id}/download`}
                           target="_blank"
                           rel="noreferrer"
                         >
                           <Download size={14} />
-                          查看 / 下载
+                          下载
                         </a>
                       </div>
                     </div>
@@ -259,73 +309,85 @@ export function ProjectDetailWorkspace({ projectId }: { projectId: string }) {
                 ))}
               </div>
             )}
-          </Panel>
+          </CollapsiblePanel>
         </div>
 
         <div className="space-y-6">
-          <Panel title="任务列表" description="可以直接在项目页运行单条任务。">
+          <Panel title="任务列表" description="每条任务都应该能看到状态、风险、结果，并支持单独运行。">
             <div className="space-y-3">
-              {detail.tasks.map((task) => (
-                <div key={task.id} className="rounded-[24px] border border-line/70 bg-paper/45 p-4">
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div>
-                      <p className="font-semibold text-ink">{task.title}</p>
-                      <p className="mt-1 text-sm leading-6 text-moss">{task.description}</p>
+              {detail.tasks.length === 0 ? (
+                <EmptyState text="这个项目还没有任务。" />
+              ) : (
+                detail.tasks.map((task) => (
+                  <div key={task.id} className="rounded-[24px] border border-line/70 bg-paper/45 p-4">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                      <div>
+                        <p className="font-semibold text-ink">{task.title}</p>
+                        <p className="mt-1 text-sm leading-6 text-moss">{task.description}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <StatusBadge value={task.riskLevel} />
+                        <StatusBadge value={task.boardStatus ?? task.status} />
+                      </div>
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      <StatusBadge value={task.riskLevel} />
-                      <StatusBadge value={task.approvalStatus} />
-                      <StatusBadge value={task.boardStatus ?? task.status} />
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void runTask(task.id)}
+                        disabled={busy !== null}
+                        className="inline-flex items-center gap-2 rounded-full border border-line/70 bg-paper px-4 py-2 text-sm font-semibold text-moss disabled:opacity-50"
+                      >
+                        <PlayCircle size={15} />
+                        {busy === task.id ? "执行中..." : "单独运行"}
+                      </button>
                     </div>
+                    {task.result ? <ExpandableResult text={task.result} /> : null}
                   </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => void runTask(task.id)}
-                      disabled={busy !== null}
-                      className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-semibold text-paper disabled:opacity-60"
-                    >
-                      <PlayCircle size={15} />
-                      {busy === task.id ? "执行中..." : "Run Task"}
-                    </button>
-                  </div>
-                  {task.result ? (
-                    <div className="mt-3 rounded-[20px] bg-[#fbfcf8] p-3 text-sm leading-6 text-moss">
-                      {task.result}
-                    </div>
-                  ) : null}
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </Panel>
 
-          <Panel title="Agent Activity" description="哪些 Agent 参与了项目、当前任务是什么、最近产出了什么。">
-            <div className="space-y-3">
-              {detail.participatingAgents.map((row) => (
-                <div key={row.agent.id} className="rounded-[24px] border border-line/70 bg-paper/45 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-ink">{row.agent.name}</p>
-                      <p className="mt-1 text-sm text-moss">{row.agent.title}</p>
-                    </div>
-                    <span className="text-xs text-moss">{row.currentTask?.title ?? "当前无任务"}</span>
-                  </div>
-                  <p className="mt-3 text-sm leading-6 text-moss">{row.recentOutput ?? "暂无最近产出"}</p>
-                </div>
-              ))}
-            </div>
-          </Panel>
-
-          <Panel title="Risks & Decisions" description="高风险任务、Blocked 任务和待老板确认事项都集中在这里。">
+          <CollapsiblePanel
+            title="风险与决策"
+            description="高风险、阻塞和待确认事项集中在这里。"
+            icon={<ShieldAlert size={16} />}
+            defaultOpen={detail.highRiskTasks.length + detail.blockedTasks.length + detail.pendingApprovalTasks.length > 0}
+            badge={<CountBadge n={detail.highRiskTasks.length + detail.blockedTasks.length + detail.pendingApprovalTasks.length} />}
+          >
             <div className="space-y-4">
               <RiskBlock title="高风险任务" tasks={detail.highRiskTasks} />
-              <RiskBlock title="Blocked 任务" tasks={detail.blockedTasks} />
-              <RiskBlock title="待老板确认事项" tasks={detail.pendingApprovalTasks} />
+              <RiskBlock title="阻塞任务" tasks={detail.blockedTasks} />
+              <RiskBlock title="待确认事项" tasks={detail.pendingApprovalTasks} />
             </div>
-          </Panel>
+          </CollapsiblePanel>
         </div>
       </section>
     </>
+  );
+}
+
+function CountBadge({ n }: { n: number }) {
+  if (!n) return null;
+  return <span className="rounded-full bg-mint/60 px-2 py-0.5 text-xs font-semibold text-ink">{n}</span>;
+}
+
+function ExpandableResult({ text }: { text: string }) {
+  const [open, setOpen] = useState(false);
+  const isLong = text.length > 180;
+  return (
+    <div className="mt-3 rounded-[20px] border border-line/60 bg-paper/55 p-3">
+      <p className={cn("whitespace-pre-wrap text-sm leading-6 text-moss", !open && isLong && "line-clamp-3")}>{text}</p>
+      {isLong ? (
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="mt-2 text-xs font-semibold text-clay hover:underline"
+        >
+          {open ? "收起" : "展开全部"}
+        </button>
+      ) : null}
+    </div>
   );
 }
 
@@ -380,11 +442,7 @@ function RiskBlock({ title, tasks }: { title: string; tasks: Task[] }) {
 }
 
 function EmptyState({ text }: { text: string }) {
-  return (
-    <div className="rounded-[24px] border border-dashed border-line/70 bg-paper/35 p-6 text-sm text-moss">
-      {text}
-    </div>
-  );
+  return <div className="rounded-[24px] border border-dashed border-line/70 bg-paper/35 p-6 text-sm text-moss">{text}</div>;
 }
 
 function formatTime(value?: string | null) {

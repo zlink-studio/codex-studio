@@ -19,7 +19,7 @@ export async function GET(
     return new Response(buffer, {
       headers: {
         "Content-Type": contentTypeByExt(path.extname(filePath)),
-        "Content-Disposition": `attachment; filename="${path.basename(filePath)}"`
+        "Content-Disposition": contentDisposition(path.basename(filePath))
       }
     });
   }
@@ -27,9 +27,16 @@ export async function GET(
   return new Response(String(deliverable.content ?? ""), {
     headers: {
       "Content-Type": "text/plain; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${slugify(String(deliverable.title ?? "deliverable"))}.txt"`
+      "Content-Disposition": contentDisposition(`${slugify(String(deliverable.title ?? "deliverable"))}.txt`)
     }
   });
+}
+
+// HTTP 头只能是 ASCII（ByteString），中文文件名需用 RFC 5987 编码，并提供 ASCII 兜底名。
+function contentDisposition(fileName: string) {
+  const asciiFallback = fileName.replace(/[^\x20-\x7e]+/g, "_").replace(/["\\]/g, "_") || "deliverable";
+  const encoded = encodeURIComponent(fileName);
+  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
 }
 
 function contentTypeByExt(ext: string) {

@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Bot, CheckCircle2, ClipboardList, Play, RefreshCcw, RotateCcw, XCircle } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Panel } from "@/components/panel";
+import { CollapsiblePanel } from "@/components/collapsible-panel";
 import { StatusBadge } from "@/components/status-badge";
 import { TaskRow } from "@/components/task-row";
 import {
@@ -452,8 +453,13 @@ export function TasksWorkspace() {
         <MetricBox label="已阻塞" value={boardMetrics.blocked} tone="danger" />
       </section>
 
-      <section className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
-        <Panel title="创建任务" description="把目标、负责人、优先级和风险说明清楚，系统就能继续往下推进。">
+      <section className="space-y-6">
+        <CollapsiblePanel
+          title="手动创建任务"
+          description="日常一般由 AI 自动拆任务；需要手动补一条时再展开。"
+          icon={<ClipboardList size={16} />}
+          defaultOpen={false}
+        >
           <form className="space-y-4" onSubmit={submit}>
             <Field label="任务标题">
               <input
@@ -552,13 +558,13 @@ export function TasksWorkspace() {
               {isSaving ? "创建中..." : "保存任务"}
             </button>
           </form>
-        </Panel>
+        </CollapsiblePanel>
 
-        <Panel
-          title="任务详情"
-          description="选中一条任务后，可以直接审批、执行、补充产出和查看日志。"
-        >
-          {selectedTask ? (
+        {selectedTask ? (
+          <Panel
+            title="任务详情"
+            description="选中的任务：可以直接审批、执行、补充产出和查看日志。"
+          >
             <div className="space-y-6">
               <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
                 <div className="space-y-4">
@@ -711,46 +717,53 @@ export function TasksWorkspace() {
                 </div>
 
                 <div className="space-y-4">
-                  <Timeline title="Agent Runs" empty="还没有 agent run 记录。">
-                    {selectedAgentRuns.map((run) => (
-                      <LogItem
-                        key={run.id}
-                        title={`${run.model ?? "local-executor"} / ${run.status ?? "unknown"} / ${(run.created_at ?? "").slice(0, 19)}`}
-                        content={`run_id: ${run.id}\ncost: ${run.cost ?? 0}`}
-                      />
-                    ))}
-                  </Timeline>
-                  <Timeline title="Model Runs" empty="还没有 model run 记录。">
-                    {selectedModelRuns.map((run) => (
-                      <LogItem
-                        key={run.id ?? `${run.provider}-${run.model}-${run.createdAt ?? ""}`}
-                        title={`${run.provider} / ${run.model} / ${(run.createdAt ?? "").slice(0, 19)}`}
-                        content={`status: ${run.status ?? "unknown"}\nlatency: ${run.latencyMs ?? 0} ms\nestimated cost: ${run.estimatedCost ?? 0}`}
-                      />
-                    ))}
-                  </Timeline>
-                  <Timeline title="技能执行" empty="这条任务还没有技能执行记录。">
-                    {selectedSkillRuns.map((run) => (
-                      <LogItem
-                        key={run.id}
-                        title={`${run.skillId} / ${run.status} / ${run.createdAt.slice(0, 19)}`}
-                        content={run.output ? JSON.stringify(run.output, null, 2) : run.error ?? "无额外输出"}
-                      />
-                    ))}
-                  </Timeline>
+                  <CollapsiblePanel
+                    title="运行记录（模型 / 技能 / Agent）"
+                    description="这条任务背后的模型调用、技能执行和成本明细。"
+                    defaultOpen={false}
+                    className="!rounded-[20px]"
+                  >
+                    <div className="space-y-4">
+                      <Timeline title="Agent Runs" empty="还没有 agent run 记录。">
+                        {selectedAgentRuns.map((run) => (
+                          <LogItem
+                            key={run.id}
+                            title={`${run.model ?? "local-executor"} / ${run.status ?? "unknown"} / ${(run.created_at ?? "").slice(0, 19)}`}
+                            content={`run_id: ${run.id}\ncost: ${run.cost ?? 0}`}
+                          />
+                        ))}
+                      </Timeline>
+                      <Timeline title="Model Runs" empty="还没有 model run 记录。">
+                        {selectedModelRuns.map((run) => (
+                          <LogItem
+                            key={run.id ?? `${run.provider}-${run.model}-${run.createdAt ?? ""}`}
+                            title={`${run.provider} / ${run.model} / ${(run.createdAt ?? "").slice(0, 19)}`}
+                            content={`status: ${run.status ?? "unknown"}\nlatency: ${run.latencyMs ?? 0} ms\nestimated cost: ${run.estimatedCost ?? 0}`}
+                          />
+                        ))}
+                      </Timeline>
+                      <Timeline title="技能执行" empty="这条任务还没有技能执行记录。">
+                        {selectedSkillRuns.map((run) => (
+                          <LogItem
+                            key={run.id}
+                            title={`${run.skillId} / ${run.status} / ${run.createdAt.slice(0, 19)}`}
+                            content={run.output ? JSON.stringify(run.output, null, 2) : run.error ?? "无额外输出"}
+                          />
+                        ))}
+                      </Timeline>
+                    </div>
+                  </CollapsiblePanel>
                 </div>
               </div>
             </div>
-          ) : (
-            <p className="text-sm text-moss">当前还没有任务。</p>
-          )}
-        </Panel>
+          </Panel>
+        ) : null}
       </section>
 
       <section className="mt-6">
         <Panel
-          title="任务流转看板"
-          description="可以直接把卡片拖到不同阶段。高风险且未审批的任务，系统会拦住继续推进。"
+          title="任务看板"
+          description="拖动卡片可在阶段间流转；点击卡片在上方查看详情。高风险未审批的任务会被拦住。"
         >
           <div className="grid gap-4 xl:grid-cols-6">
             {boardColumns.map((column) => (
@@ -800,9 +813,10 @@ export function TasksWorkspace() {
       </section>
 
       <section className="mt-6">
-        <Panel
+        <CollapsiblePanel
           title="任务总表"
           description="从全局角度扫一遍任务分布、审批状态、所属项目和负责人。"
+          defaultOpen={false}
         >
           <div className="overflow-x-auto">
             <table className="w-full min-w-[780px] text-left">
@@ -819,7 +833,7 @@ export function TasksWorkspace() {
               <tbody>{items.map((task) => <TaskRow key={task.id} task={task} agents={agents} projects={projects} />)}</tbody>
             </table>
           </div>
-        </Panel>
+        </CollapsiblePanel>
       </section>
     </>
   );
@@ -857,20 +871,18 @@ function KanbanCard({
       }`}
     >
       <button className="block w-full text-left" onClick={onSelect}>
-        <div className="flex items-start justify-between gap-2">
-          <h4 className="text-sm font-semibold leading-5 text-ink">{task.title}</h4>
-          <Bot size={16} className="shrink-0 text-moss" />
-        </div>
-        <p className="mt-2 line-clamp-3 text-xs leading-5 text-moss">{task.description}</p>
+        <h4 className="text-sm font-semibold leading-5 text-ink">{task.title}</h4>
+        <p className="mt-1.5 line-clamp-2 text-xs leading-5 text-moss">{task.description}</p>
       </button>
 
-      <div className="mt-3 flex flex-wrap gap-2">
-        <span className="rounded-full bg-[#e8efe4] px-2.5 py-1 text-xs font-medium text-moss">
+      <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+        <span className="inline-flex items-center gap-1 rounded-full bg-[#e8efe4] px-2 py-0.5 text-xs font-medium text-moss">
+          <Bot size={12} />
           {agentName}
         </span>
         <StatusBadge value={task.riskLevel} />
-        <StatusBadge value={task.approvalStatus} />
-        <StatusBadge value={task.reviewStatus ?? "not_required"} />
+        {task.approvalStatus === "pending" ? <StatusBadge value={task.approvalStatus} /> : null}
+        {task.reviewStatus && task.reviewStatus !== "not_required" ? <StatusBadge value={task.reviewStatus} /> : null}
       </div>
 
       {task.approvalStatus === "pending" && (

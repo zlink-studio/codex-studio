@@ -239,6 +239,7 @@ const cloudSeedOrder: CollectionName[] = [
 ];
 
 let cloudSeedPromise: Promise<void> | null = null;
+let cloudDisabledUntil = 0;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -347,7 +348,11 @@ function getOwnerId() {
 }
 
 function isCloudBacked(name: CollectionName): boolean {
-  return Boolean(cloudConfig[name] && getSupabase() && getOwnerId());
+  return Boolean(cloudConfig[name] && getSupabase() && getOwnerId() && Date.now() > cloudDisabledUntil);
+}
+
+function markCloudUnavailable() {
+  cloudDisabledUntil = Date.now() + 5 * 60 * 1000;
 }
 
 function isUuid(value: unknown): value is string {
@@ -684,17 +689,28 @@ export async function readCollection<T>(name: CollectionName): Promise<T[]> {
     return localRows;
   }
 
-  await ensureCloudSeeded();
-  const cloudRows = (await readSupabaseRows(name)) as T[];
-  const syncableLocalRows = (await filterSyncableRowsForCloud(name, localRows as AnyRow[])) as T[];
-  return mergeById(cloudRows as Array<{ id: string }>, syncableLocalRows as Array<{ id: string }>) as T[];
+  try {
+    await ensureCloudSeeded();
+    const cloudRows = (await readSupabaseRows(name)) as T[];
+    const syncableLocalRows = (await filterSyncableRowsForCloud(name, localRows as AnyRow[])) as T[];
+    return mergeById(cloudRows as Array<{ id: string }>, syncableLocalRows as Array<{ id: string }>) as T[];
+  } catch (error) {
+    markCloudUnavailable();
+    console.warn(`[local-store] Supabase read failed for ${name}; using local data only.`, error);
+    return localRows;
+  }
 }
 
 export async function writeCollection<T>(name: CollectionName, data: T[]) {
   await writeLocalCollection(name, data);
   if (isCloudBacked(name)) {
-    await ensureCloudSeeded();
-    await replaceSupabaseCollection(name, data as AnyRow[]);
+    try {
+      await ensureCloudSeeded();
+      await replaceSupabaseCollection(name, data as AnyRow[]);
+    } catch (error) {
+      markCloudUnavailable();
+      console.warn(`[local-store] Supabase write failed for ${name}; local data was saved.`, error);
+    }
   }
 }
 
@@ -704,8 +720,13 @@ export async function appendCollectionItem<T extends { id: string }>(name: Colle
   await writeLocalCollection(name, rows);
 
   if (isCloudBacked(name) && shouldSyncRow(name, item as AnyRow)) {
-    await ensureCloudSeeded();
-    await upsertSupabaseRows(name, [item as AnyRow]);
+    try {
+      await ensureCloudSeeded();
+      await upsertSupabaseRows(name, [item as AnyRow]);
+    } catch (error) {
+      markCloudUnavailable();
+      console.warn(`[local-store] Supabase append failed for ${name}; local data was saved.`, error);
+    }
   }
   return item;
 }
@@ -724,8 +745,13 @@ export async function patchCollectionItem<T extends { id: string }>(
   await writeLocalCollection(name, rows);
 
   if (isCloudBacked(name) && shouldSyncRow(name, next as AnyRow)) {
-    await ensureCloudSeeded();
-    await upsertSupabaseRows(name, [next as AnyRow]);
+    try {
+      await ensureCloudSeeded();
+      await upsertSupabaseRows(name, [next as AnyRow]);
+    } catch (error) {
+      markCloudUnavailable();
+      console.warn(`[local-store] Supabase patch failed for ${name}; local data was saved.`, error);
+    }
   }
   return next;
 }
@@ -746,8 +772,13 @@ export async function upsertByField<T extends Record<string, unknown>>(
   await writeLocalCollection(name, rows);
 
   if (isCloudBacked(name)) {
-    await ensureCloudSeeded();
-    await replaceSupabaseCollection(name, rows as AnyRow[]);
+    try {
+      await ensureCloudSeeded();
+      await replaceSupabaseCollection(name, rows as AnyRow[]);
+    } catch (error) {
+      markCloudUnavailable();
+      console.warn(`[local-store] Supabase upsert failed for ${name}; local data was saved.`, error);
+    }
   }
   return record;
 }

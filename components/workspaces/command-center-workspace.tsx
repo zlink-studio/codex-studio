@@ -3,9 +3,10 @@
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, Bot, ClipboardCheck, Database, Send, ShieldAlert, Workflow } from "lucide-react";
+import { ArrowRight, Bot, ClipboardCheck, Database, Send, ShieldAlert } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { Panel } from "@/components/panel";
+import { CollapsiblePanel } from "@/components/collapsible-panel";
 import { StatusBadge } from "@/components/status-badge";
 import { normalizeAgent, normalizeProject, normalizeTask, readApiData } from "@/lib/client-normalizers";
 import type { Agent, Project, Task } from "@/lib/types";
@@ -29,8 +30,8 @@ type CommandResponse = {
 };
 
 const examples = [
-  "做一个可跑通的 AI 外贸 B2B 自动建站 MVP，并先推进第一轮任务执行。",
-  "围绕当前项目拆出可执行任务，自动执行低风险部分，把高风险事项挂老板审批。",
+  "做一个可跑通的 AI 外贸 B2B 自动建站 MVP，从拆解到交付物全部跑完。",
+  "为一家工业设备出口公司做一份 LinkedIn 内容运营方案，给出第一周可发布的帖子草稿。",
   "把一个新客户项目从 brief、任务拆解、执行到交付物输出全部走一遍。"
 ];
 
@@ -92,7 +93,7 @@ export function CommandCenterWorkspace() {
       <PageHeader
         eyebrow="Command Center"
         title="项目指挥台"
-        description="老板只需要给出目标，系统会自动生成 brief、建项目、拆任务，并把高风险项送去审批。"
+        description="你只需给出目标，系统会自动生成 brief、建项目、拆任务、逐条执行并由 AI 复核签批，直接把项目跑到完成。"
         action={
           <span className="rounded-full border border-line/70 bg-paper/55 px-4 py-2 text-sm text-moss backdrop-blur-xl">
             {message}
@@ -160,40 +161,16 @@ export function CommandCenterWorkspace() {
                 <Metric icon={<Database size={16} />} label="项目状态" value={result.project.stage ?? "planning"} />
               </div>
 
-              <div className="rounded-[24px] border border-line/70 bg-paper/55 p-4">
-                <p className="text-sm font-semibold text-ink">Project Brief</p>
-                <div className="mt-3 space-y-2 text-sm leading-6 text-moss">
-                  <p><span className="font-semibold text-ink">项目：</span>{result.brief.project_name}</p>
-                  <p><span className="font-semibold text-ink">客户：</span>{result.brief.client_name}</p>
-                  <p><span className="font-semibold text-ink">目标：</span>{result.brief.objective}</p>
-                  <p><span className="font-semibold text-ink">背景：</span>{result.brief.client_profile}</p>
-                  <p><span className="font-semibold text-ink">Brief：</span>{result.brief.brief}</p>
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                {result.created_tasks.map((row) => {
-                  const task = normalizeTask(row);
-                  const agent = agents.find((item) => item.id === task.assignedAgentId);
-                  return (
-                    <article key={task.id} className="rounded-[24px] border border-line/70 bg-paper/55 p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <p className="font-medium text-ink">{task.title}</p>
-                          <p className="mt-1 text-sm leading-6 text-moss">{task.description}</p>
-                        </div>
-                        <StatusBadge value={task.riskLevel} />
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <Tag>{agent?.name ?? task.assignedAgentRole ?? "未分配"}</Tag>
-                        <Tag>{task.modelPolicy ?? "default"}</Tag>
-                        <StatusBadge value={task.approvalStatus} />
-                        <StatusBadge value={task.boardStatus ?? task.status} />
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
+              <Link
+                href={`/projects/${result.project.id}`}
+                className="flex items-center justify-between gap-3 rounded-[24px] bg-ink px-5 py-4 text-paper shadow-[0_16px_38px_rgba(15,23,42,0.18)] transition hover:opacity-95"
+              >
+                <span>
+                  <span className="block text-sm font-semibold">项目已创建并开始执行</span>
+                  <span className="mt-0.5 block text-xs text-paper/75">点击查看进度、执行日志和交付物</span>
+                </span>
+                <ArrowRight size={18} />
+              </Link>
 
               <div className="rounded-[24px] border border-line/70 bg-paper/55 p-4">
                 <p className="text-sm font-semibold text-ink">下一步建议</p>
@@ -207,13 +184,45 @@ export function CommandCenterWorkspace() {
                 ) : null}
               </div>
 
-              <Link
-                href={`/projects/${result.project.id}`}
-                className="inline-flex items-center gap-2 rounded-full bg-moss px-4 py-2.5 text-sm font-semibold text-paper"
+              <CollapsiblePanel title="项目简报" defaultOpen={false} className="!rounded-[24px]">
+                <div className="space-y-2 text-sm leading-6 text-moss">
+                  <p><span className="font-semibold text-ink">项目：</span>{result.brief.project_name}</p>
+                  <p><span className="font-semibold text-ink">客户：</span>{result.brief.client_name}</p>
+                  <p><span className="font-semibold text-ink">目标：</span>{result.brief.objective}</p>
+                  <p><span className="font-semibold text-ink">背景：</span>{result.brief.client_profile}</p>
+                  <p><span className="font-semibold text-ink">Brief：</span>{result.brief.brief}</p>
+                </div>
+              </CollapsiblePanel>
+
+              <CollapsiblePanel
+                title="任务拆解"
+                description={`共 ${result.created_tasks.length} 条任务`}
+                defaultOpen={false}
+                className="!rounded-[24px]"
               >
-                打开项目详情
-                <ArrowRight size={16} />
-              </Link>
+                <div className="space-y-3">
+                  {result.created_tasks.map((row) => {
+                    const task = normalizeTask(row);
+                    const agent = agents.find((item) => item.id === task.assignedAgentId);
+                    return (
+                      <article key={task.id} className="rounded-[20px] border border-line/70 bg-paper/55 p-4">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-ink">{task.title}</p>
+                            <p className="mt-1 text-sm leading-6 text-moss">{task.description}</p>
+                          </div>
+                          <StatusBadge value={task.riskLevel} />
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <Tag>{agent?.name ?? task.assignedAgentRole ?? "未分配"}</Tag>
+                          <Tag>{task.modelPolicy ?? "default"}</Tag>
+                          <StatusBadge value={task.boardStatus ?? task.status} />
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </CollapsiblePanel>
             </div>
           ) : (
             <div className="rounded-[24px] border border-dashed border-line/70 bg-paper/35 p-6 text-sm leading-6 text-moss">

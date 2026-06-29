@@ -5,6 +5,7 @@ import { Rocket, Sparkles, Workflow } from "lucide-react";
 import { AgentCard } from "@/components/agent-card";
 import { PageHeader } from "@/components/page-header";
 import { Panel } from "@/components/panel";
+import { CollapsiblePanel } from "@/components/collapsible-panel";
 import { agentTemplates, getAgentTemplate } from "@/lib/agent-templates";
 import { normalizeAgent, normalizeAgentSkill, normalizeSkill, readApiData } from "@/lib/client-normalizers";
 import type { Agent, AgentSkill, Skill } from "@/lib/types";
@@ -187,7 +188,11 @@ export function AgentsWorkspace() {
 
       <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <div className="space-y-6">
-          <Panel title="岗位模板" description="模板会把角色、模型、工具权限、技能组合和提示词一起装好。">
+          <CollapsiblePanel
+            title="岗位模板"
+            description="模板会把角色、模型、工具权限、技能组合和提示词一起装好。"
+            defaultOpen={false}
+          >
             <div className="grid gap-3 md:grid-cols-2">
               {agentTemplates.map((template) => {
                 const active = selectedTemplateId === template.id;
@@ -227,9 +232,13 @@ export function AgentsWorkspace() {
                 );
               })}
             </div>
-          </Panel>
+          </CollapsiblePanel>
 
-          <Panel title="可参考的外部技能" description="这些开源 skill 可以直接作为员工能力的补充来源。">
+          <CollapsiblePanel
+            title="可参考的外部技能"
+            description="这些开源 skill 可以直接作为员工能力的补充来源。"
+            defaultOpen={false}
+          >
             <div className="space-y-4">
               {agentTemplates.map((template) => (
                 <div key={template.id} className="rounded-lg border border-line bg-paper p-4">
@@ -254,11 +263,23 @@ export function AgentsWorkspace() {
                 </div>
               ))}
             </div>
-          </Panel>
+          </CollapsiblePanel>
         </div>
 
         <div className="space-y-6">
-          <Panel title="创建员工" description="先用模板带出默认值，再按你的业务做微调。">
+          <Panel title="当前员工 roster" description="下面这些是系统里真实登记在册的数字员工。">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+              {items.map((agent) => (
+                <AgentCard key={agent.id} agent={agent} />
+              ))}
+            </div>
+          </Panel>
+
+          <CollapsiblePanel
+            title="创建员工"
+            description="先用模板带出默认值，再按你的业务做微调。"
+            defaultOpen={false}
+          >
             <form className="grid gap-4 md:grid-cols-2" onSubmit={submit}>
               <Field label="姓名" value={form.name} onChange={(value) => setForm({ ...form, name: value })} placeholder="例如：执行总管" required />
               <Field label="部门" value={form.department} onChange={(value) => setForm({ ...form, department: value })} placeholder="Executive / Marketing" required />
@@ -297,15 +318,7 @@ export function AgentsWorkspace() {
                 {isSaving ? "保存中..." : "保存员工"}
               </button>
             </form>
-          </Panel>
-
-          <Panel title="当前员工 roster" description="下面这些是系统里真实登记在册的数字员工。">
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-              {items.map((agent) => (
-                <AgentCard key={agent.id} agent={agent} />
-              ))}
-            </div>
-          </Panel>
+          </CollapsiblePanel>
         </div>
       </section>
     </>
