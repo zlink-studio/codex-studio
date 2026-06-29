@@ -546,12 +546,13 @@ function toCloudRow(name, row, ownerId) {
         created_at: value(base, "created_at", "createdAt") ?? new Date().toISOString()
       };
     case "task-logs":
+      const runId = value(base, "run_id", "runId");
       return {
         id: base.id,
         owner_id: base.owner_id,
         task_id: value(base, "task_id", "taskId") ?? null,
         agent_id: safeUuid(agentRef),
-        run_id: value(base, "run_id", "runId") ?? null,
+        run_id: validAgentRunIds.has(runId) ? runId : null,
         type: base.type ?? "action",
         content: base.content ?? "",
         metadata: base.metadata ?? {},

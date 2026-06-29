@@ -686,7 +686,7 @@ function toCloudRow(name: CollectionName, row: AnyRow): AnyRow {
         owner_id: base.owner_id,
         task_id: base.task_id ?? base.taskId ?? null,
         agent_id: safeAgentId,
-        run_id: base.run_id ?? base.runId ?? null,
+        run_id: isUuid(base.run_id ?? base.runId) ? (base.run_id ?? base.runId) : null,
         type: base.type ?? "action",
         content: base.content ?? "",
         metadata: base.metadata ?? {},
