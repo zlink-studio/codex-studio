@@ -118,9 +118,12 @@ const cloudConfig: Partial<Record<CollectionName, { table: string; columns: stri
       "client_name",
       "objective",
       "client_profile",
+      "brief",
       "progress",
       "stage",
+      "risk_level",
       "due_date",
+      "agent_ids",
       "created_at",
       "updated_at"
     ]
@@ -135,18 +138,28 @@ const cloudConfig: Partial<Record<CollectionName, { table: string; columns: stri
       "title",
       "description",
       "task_type",
+      "assigned_agent_role",
+      "suggested_skills",
+      "model_policy",
       "priority",
       "risk_level",
       "status",
       "board_status",
       "approval_status",
+      "approval_required",
       "review_status",
+      "input_requirements",
+      "output_requirements",
+      "result",
       "estimated_cost",
       "actual_cost",
       "parent_task_id",
       "sort_order",
       "due_at",
       "outputs",
+      "used_memory_ids",
+      "model_run",
+      "rework_count",
       "created_by",
       "created_at",
       "updated_at"
@@ -224,18 +237,113 @@ const cloudConfig: Partial<Record<CollectionName, { table: string; columns: stri
   "task-logs": {
     table: "task_logs",
     columns: ["id", "owner_id", "task_id", "agent_id", "run_id", "type", "content", "metadata", "created_at"]
+  },
+  skills: {
+    table: "skills",
+    columns: [
+      "id",
+      "owner_id",
+      "name",
+      "slug",
+      "category",
+      "description",
+      "instructions",
+      "input_schema",
+      "output_schema",
+      "risk_level",
+      "skill_type",
+      "required_tools",
+      "required_memory_types",
+      "approval_required",
+      "source",
+      "source_url",
+      "license",
+      "version",
+      "enabled",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "agent-skills": {
+    table: "agent_skills",
+    columns: ["id", "owner_id", "agent_id", "skill_id", "priority", "enabled", "config", "created_at", "updated_at"]
+  },
+  "skill-runs": {
+    table: "skill_runs",
+    columns: [
+      "id",
+      "owner_id",
+      "skill_id",
+      "agent_id",
+      "task_id",
+      "agent_run_id",
+      "model_run_id",
+      "status",
+      "input",
+      "output",
+      "error",
+      "latency_ms",
+      "created_at"
+    ]
+  },
+  "skill-reviews": {
+    table: "skill_reviews",
+    columns: ["id", "owner_id", "skill_id", "review_status", "risk_notes", "reviewed_by", "reviewed_at", "created_at"]
+  },
+  deliverables: {
+    table: "deliverables",
+    columns: [
+      "id",
+      "owner_id",
+      "project_id",
+      "task_id",
+      "agent_id",
+      "title",
+      "type",
+      "file_path",
+      "content",
+      "status",
+      "created_at",
+      "updated_at"
+    ]
+  },
+  "project-logs": {
+    table: "project_logs",
+    columns: [
+      "id",
+      "owner_id",
+      "project_id",
+      "event_type",
+      "title",
+      "description",
+      "related_task_id",
+      "related_agent_id",
+      "related_deliverable_id",
+      "created_at"
+    ]
+  },
+  "daily-reports": {
+    table: "daily_reports",
+    columns: ["id", "owner_id", "report_date", "summary", "wins", "risks", "next_actions", "created_at"]
   }
 };
 
 const cloudSeedOrder: CollectionName[] = [
+  "skills",
+  "agent-skills",
+  "skill-reviews",
   "agents",
   "projects",
   "tasks",
   "agent-runs",
   "model-runs",
+  "skill-runs",
   "task-logs",
   "quality-reviews",
-  "approvals"
+  "approvals",
+  "deliverables",
+  "project-logs",
+  "daily-reports"
 ];
 
 let cloudSeedPromise: Promise<void> | null = null;
@@ -372,7 +480,7 @@ function getRowValue(row: AnyRow, ...keys: string[]) {
 function shouldSyncRow(name: CollectionName, row: AnyRow) {
   switch (name) {
     case "agents":
-      return typeof row.id === "string" && row.id.length > 0;
+      return isUuid(row.id);
     case "projects":
       return isUuid(row.id);
     case "tasks":
@@ -492,9 +600,12 @@ function toCloudRow(name: CollectionName, row: AnyRow): AnyRow {
         client_name: base.client_name ?? base.clientName ?? "",
         objective: base.objective ?? "",
         client_profile: base.client_profile ?? base.clientProfile ?? "",
+        brief: base.brief ?? null,
         progress: Number(base.progress ?? 0),
         stage: base.stage ?? "planning",
+        risk_level: base.risk_level ?? base.riskLevel ?? "low",
         due_date: base.due_date ?? base.dueDate ?? null,
+        agent_ids: base.agent_ids ?? base.agentIds ?? [],
         created_at: base.created_at ?? new Date().toISOString(),
         updated_at: base.updated_at ?? new Date().toISOString()
       });
@@ -507,18 +618,28 @@ function toCloudRow(name: CollectionName, row: AnyRow): AnyRow {
         title: base.title,
         description: base.description,
         task_type: base.task_type ?? base.taskType ?? "general",
+        assigned_agent_role: base.assigned_agent_role ?? base.assignedAgentRole ?? null,
+        suggested_skills: base.suggested_skills ?? base.suggestedSkills ?? [],
+        model_policy: base.model_policy ?? base.modelPolicy ?? null,
         priority: base.priority ?? "medium",
         risk_level: base.risk_level ?? base.riskLevel ?? "low",
         status: base.status ?? "todo",
         board_status: base.board_status ?? base.boardStatus ?? base.status ?? "todo",
         approval_status: base.approval_status ?? base.approvalStatus ?? "not_required",
+        approval_required: Boolean(base.approval_required ?? base.approvalRequired ?? false),
         review_status: base.review_status ?? base.reviewStatus ?? "not_required",
+        input_requirements: base.input_requirements ?? base.inputRequirements ?? null,
+        output_requirements: base.output_requirements ?? base.outputRequirements ?? null,
+        result: base.result ?? null,
         estimated_cost: Number(base.estimated_cost ?? base.estimatedCost ?? 0),
         actual_cost: Number(base.actual_cost ?? base.actualCost ?? 0),
         parent_task_id: base.parent_task_id ?? base.parentTaskId ?? null,
         sort_order: Number(base.sort_order ?? base.sortOrder ?? 0),
         due_at: base.due_at ?? base.dueAt ?? null,
         outputs: base.outputs ?? [],
+        used_memory_ids: base.used_memory_ids ?? base.usedMemoryIds ?? [],
+        model_run: base.model_run ?? base.modelRun ?? null,
+        rework_count: Number(base.rework_count ?? base.reworkCount ?? 0),
         created_by: base.created_by ?? "owner",
         created_at: base.created_at ?? new Date().toISOString(),
         updated_at: base.updated_at ?? new Date().toISOString()
@@ -595,6 +716,108 @@ function toCloudRow(name: CollectionName, row: AnyRow): AnyRow {
         decision_note: base.decision_note ?? base.decisionNote ?? null,
         decided_at: base.decided_at ?? base.decidedAt ?? null,
         created_at: base.created_at ?? new Date().toISOString()
+      });
+    case "skills":
+      return stripUndefined({
+        id: base.id,
+        owner_id: base.owner_id,
+        name: base.name,
+        slug: base.slug,
+        category: base.category ?? "management",
+        description: base.description ?? "",
+        instructions: base.instructions ?? "",
+        input_schema: base.input_schema ?? base.inputSchema ?? null,
+        output_schema: base.output_schema ?? base.outputSchema ?? null,
+        risk_level: base.risk_level ?? base.riskLevel ?? "low",
+        skill_type: base.skill_type ?? base.skillType ?? "knowledge",
+        required_tools: base.required_tools ?? base.requiredTools ?? [],
+        required_memory_types: base.required_memory_types ?? base.requiredMemoryTypes ?? [],
+        approval_required: Boolean(base.approval_required ?? base.approvalRequired ?? false),
+        source: base.source ?? "custom",
+        source_url: base.source_url ?? base.sourceUrl ?? null,
+        license: base.license ?? null,
+        version: base.version ?? null,
+        enabled: base.enabled ?? true,
+        created_at: base.created_at ?? base.createdAt ?? new Date().toISOString(),
+        updated_at: base.updated_at ?? base.updatedAt ?? new Date().toISOString()
+      });
+    case "agent-skills":
+      return stripUndefined({
+        id: base.id,
+        owner_id: base.owner_id,
+        agent_id: base.agent_id ?? base.agentId,
+        skill_id: base.skill_id ?? base.skillId,
+        priority: base.priority ?? "secondary",
+        enabled: base.enabled ?? true,
+        config: base.config ?? null,
+        created_at: base.created_at ?? base.createdAt ?? new Date().toISOString(),
+        updated_at: base.updated_at ?? base.updatedAt ?? new Date().toISOString()
+      });
+    case "skill-runs":
+      return stripUndefined({
+        id: base.id,
+        owner_id: base.owner_id,
+        skill_id: base.skill_id ?? base.skillId,
+        agent_id: base.agent_id ?? base.agentId ?? null,
+        task_id: base.task_id ?? base.taskId ?? null,
+        agent_run_id: base.agent_run_id ?? base.agentRunId ?? null,
+        model_run_id: base.model_run_id ?? base.modelRunId ?? null,
+        status: base.status ?? "success",
+        input: base.input ?? null,
+        output: base.output ?? null,
+        error: base.error ?? null,
+        latency_ms: Number(base.latency_ms ?? base.latencyMs ?? 0),
+        created_at: base.created_at ?? base.createdAt ?? new Date().toISOString()
+      });
+    case "skill-reviews":
+      return stripUndefined({
+        id: base.id,
+        owner_id: base.owner_id,
+        skill_id: base.skill_id ?? base.skillId,
+        review_status: base.review_status ?? base.reviewStatus ?? "pending",
+        risk_notes: base.risk_notes ?? base.riskNotes ?? null,
+        reviewed_by: base.reviewed_by ?? base.reviewedBy ?? null,
+        reviewed_at: base.reviewed_at ?? base.reviewedAt ?? null,
+        created_at: base.created_at ?? base.createdAt ?? new Date().toISOString()
+      });
+    case "deliverables":
+      return stripUndefined({
+        id: base.id,
+        owner_id: base.owner_id,
+        project_id: base.project_id ?? base.projectId,
+        task_id: base.task_id ?? base.taskId ?? null,
+        agent_id: base.agent_id ?? base.agentId ?? null,
+        title: base.title,
+        type: base.type ?? "text",
+        file_path: base.file_path ?? base.filePath ?? null,
+        content: base.content ?? null,
+        status: base.status ?? "draft",
+        created_at: base.created_at ?? base.createdAt ?? new Date().toISOString(),
+        updated_at: base.updated_at ?? base.updatedAt ?? new Date().toISOString()
+      });
+    case "project-logs":
+      return stripUndefined({
+        id: base.id,
+        owner_id: base.owner_id,
+        project_id: base.project_id ?? base.projectId,
+        event_type: base.event_type ?? base.eventType ?? "task_completed",
+        title: base.title ?? "",
+        description: base.description ?? "",
+        related_task_id: base.related_task_id ?? base.relatedTaskId ?? null,
+        related_agent_id: base.related_agent_id ?? base.relatedAgentId ?? null,
+        related_deliverable_id: base.related_deliverable_id ?? base.relatedDeliverableId ?? null,
+        created_at: base.created_at ?? base.createdAt ?? new Date().toISOString()
+      });
+    case "daily-reports":
+      return stripUndefined({
+        id: base.id,
+        owner_id: base.owner_id,
+        report_date: base.report_date ?? base.reportDate ?? new Date().toISOString().slice(0, 10),
+        summary: base.summary ?? "",
+        wins: base.wins ?? [],
+        risks: base.risks ?? [],
+        next_actions: base.next_actions ?? base.nextActions ?? [],
+        created_at: base.created_at ?? base.createdAt ?? new Date().toISOString()
       });
     default:
       return base;
