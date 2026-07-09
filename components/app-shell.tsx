@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -69,17 +68,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <aside className="fixed inset-y-4 left-4 z-20 hidden w-[296px] lg:block">
         <div className="glass-panel-strong flex h-full flex-col overflow-y-auto rounded-[28px] px-4 py-4">
-          <Link href="/" className="flex items-center gap-4 rounded-[22px] border border-white/35 bg-white/35 px-4 py-4 dark:bg-white/5">
-            <span className="flex h-14 w-28 items-center justify-center overflow-hidden rounded-2xl border border-line/70 bg-white/80 px-3 dark:bg-white/10">
-              <Image src="/zlink-logo.jpg" alt="ZLink" width={112} height={48} className="h-full w-full object-contain" priority />
-            </span>
-              <span>
-                <span className="block text-lg font-semibold text-ink">ZLink AI</span>
-              <span className="mt-1 block text-sm text-moss">一人公司操作系统</span>
-              </span>
-          </Link>
-
-          <nav className="mt-6 flex-1 space-y-1.5 overflow-y-auto pb-4">
+          <nav className="flex-1 space-y-1.5 overflow-y-auto pb-4">
             {coreNav.map((item) => {
               const Icon = item.icon;
               const active = isActive(pathname, item.href);
@@ -156,11 +145,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="lg:pl-[328px]">
         <div className="px-3 pt-3 sm:px-4 lg:hidden lg:px-6">
           <div className="glass-panel-strong rounded-[28px] border border-line/70 px-4 py-4 sm:px-6">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold text-ink">ZLink AI</p>
-                <p className="mt-1 text-xs leading-5 text-moss">一人公司操作系统</p>
-              </div>
+            <div className="flex items-center justify-end gap-3">
               <ThemeToggle compact />
             </div>
 
