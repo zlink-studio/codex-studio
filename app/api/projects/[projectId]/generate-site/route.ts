@@ -5,6 +5,8 @@ import { generateSiteDraft, readSiteDraftStatus } from "@/lib/site-builder";
 import type { Project } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+// Model calls can run long; 60s is the ceiling that works on every Vercel plan.
+export const maxDuration = 60;
 
 export async function GET(_: Request, { params }: { params: { projectId: string } }) {
   const status = await readSiteDraftStatus(params.projectId);

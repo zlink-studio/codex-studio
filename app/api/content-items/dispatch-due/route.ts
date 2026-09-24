@@ -3,6 +3,8 @@ import { fail, ok, parseJson, resolveOwnerId } from "@/lib/api";
 import { dispatchQueuedContent } from "@/lib/content-operations";
 
 export const dynamic = "force-dynamic";
+// Model calls can run long; 60s is the ceiling that works on every Vercel plan.
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const expected = process.env.CONTENT_SCHEDULER_TOKEN?.trim();

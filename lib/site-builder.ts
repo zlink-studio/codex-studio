@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import type { Project } from "@/lib/types";
+import { getOutputsRoot } from "@/lib/storage-paths";
 
 type CompanyProfile = {
   companyName: string;
@@ -52,7 +53,7 @@ type SiteDraft = {
   outputDir: string;
 };
 
-const outputRoot = path.join(process.cwd(), "outputs");
+const outputRoot = getOutputsRoot();
 
 export async function generateSiteDraft(project: Project): Promise<SiteDraft> {
   const generatedAt = new Date().toISOString();

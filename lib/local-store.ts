@@ -11,8 +11,9 @@ import {
   tasks as seedTasks
 } from "@/lib/mock-data";
 import { createSupabaseServerClient } from "@/lib/supabase";
+import { getWritableRoot } from "@/lib/storage-paths";
 
-const dataDir = path.join(process.cwd(), "work", "local-data");
+const dataDir = path.join(getWritableRoot(), "work", "local-data");
 
 type CollectionName =
   | "agents"

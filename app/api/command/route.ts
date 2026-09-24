@@ -8,6 +8,8 @@ type CommandBody = {
 };
 
 export const dynamic = "force-dynamic";
+// Model calls can run long; 60s is the ceiling that works on every Vercel plan.
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   const body = await parseJson<CommandBody>(request);

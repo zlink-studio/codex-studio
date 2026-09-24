@@ -84,6 +84,8 @@ function NavGroup({ label, items, pathname }: { label: string; items: typeof pri
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
+  if (pathname === "/login") return <>{children}</>;
+
   return (
     <div className="min-h-screen bg-paper text-ink">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-line bg-[#0b0c0e]/95 px-3.5 py-4 lg:flex lg:flex-col">

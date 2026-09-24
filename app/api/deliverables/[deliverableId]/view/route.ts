@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { fail } from "@/lib/api";
 import { readCollection } from "@/lib/local-store";
+import { resolveDeliverablePath } from "@/lib/storage-paths";
 
 export const dynamic = "force-dynamic";
 
@@ -16,10 +17,10 @@ export async function GET(
   let raw = String(deliverable.content ?? "");
   let ext = "";
   if (deliverable.file_path) {
-    const filePath = String(deliverable.file_path);
-    ext = path.extname(filePath).toLowerCase();
+    const filePath = resolveDeliverablePath(String(deliverable.file_path));
+    ext = path.extname(String(deliverable.file_path)).toLowerCase();
     try {
-      raw = await fs.readFile(filePath, "utf8");
+      if (filePath) raw = await fs.readFile(filePath, "utf8");
     } catch {
       // Fall back to stored content when the generated file is unavailable.
     }
@@ -32,7 +33,9 @@ export async function GET(
   return new Response(body, {
     headers: {
       "Content-Type": "text/html; charset=utf-8",
-      "Content-Disposition": "inline"
+      "Content-Disposition": "inline",
+      // Generated HTML runs in an opaque origin so it cannot call the workbench API with the owner's session.
+      "Content-Security-Policy": "sandbox allow-popups"
     }
   });
 }

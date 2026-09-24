@@ -2,6 +2,7 @@ import { promises as fs } from "fs";
 import path from "path";
 import { fail } from "@/lib/api";
 import { readCollection } from "@/lib/local-store";
+import { resolveDeliverablePath } from "@/lib/storage-paths";
 
 export const dynamic = "force-dynamic";
 
@@ -13,15 +14,17 @@ export async function GET(
   const deliverable = rows.find((item) => item.id === params.deliverableId);
   if (!deliverable) return fail("deliverable not found", 404);
 
-  if (deliverable.file_path) {
-    const filePath = String(deliverable.file_path);
-    const buffer = await fs.readFile(filePath);
-    return new Response(buffer, {
-      headers: {
-        "Content-Type": contentTypeByExt(path.extname(filePath)),
-        "Content-Disposition": contentDisposition(path.basename(filePath))
-      }
-    });
+  const filePath = deliverable.file_path ? resolveDeliverablePath(String(deliverable.file_path)) : null;
+  if (filePath) {
+    const buffer = await fs.readFile(filePath).catch(() => null);
+    if (buffer) {
+      return new Response(buffer, {
+        headers: {
+          "Content-Type": contentTypeByExt(path.extname(filePath)),
+          "Content-Disposition": contentDisposition(path.basename(filePath))
+        }
+      });
+    }
   }
 
   return new Response(String(deliverable.content ?? ""), {

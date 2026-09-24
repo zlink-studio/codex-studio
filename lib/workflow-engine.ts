@@ -5,6 +5,7 @@ import { getDefaultModelPolicies } from "@/lib/llm/catalog";
 import { appendCollectionItem, patchCollectionItem, readCollection, writeCollection } from "@/lib/local-store";
 import { resolveModelPolicy, runLLM } from "@/lib/llm/router";
 import { formatMemoriesForPrompt, retrieveMemoryForTask } from "@/lib/memory/service";
+import { getOutputsRoot } from "@/lib/storage-paths";
 import type {
   Agent,
   Deliverable,
@@ -1254,7 +1255,7 @@ async function createDeliverable(input: {
   const projectSlug = slugify(input.project?.name ?? input.project?.id ?? "project");
   const safeTitle = slugify(input.title || input.task.title || "deliverable");
   const ext = DELIVERABLE_EXT[input.type] ?? "txt";
-  const outputDir = path.join(process.cwd(), "outputs", projectSlug);
+  const outputDir = path.join(getOutputsRoot(), projectSlug);
   await fs.mkdir(outputDir, { recursive: true });
   const fileName = `${safeTitle}-${Date.now()}.${ext}`;
   const filePath = path.join(outputDir, fileName);
