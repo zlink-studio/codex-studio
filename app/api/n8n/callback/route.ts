@@ -1,13 +1,27 @@
-import { fail, ok, parseJson } from "@/lib/api";
+import { fail, ok } from "@/lib/api";
+import { verifyN8nCallbackSignature } from "@/lib/connectors/callback-auth";
 import { createSupabaseServerClient } from "@/lib/supabase";
 
 export async function POST(request: Request) {
-  const body = await parseJson<{
+  const rawBody = await request.text();
+  try {
+    if (!verifyN8nCallbackSignature(rawBody, request.headers.get("x-zlink-signature"))) {
+      return fail("Invalid n8n callback signature", 401);
+    }
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Callback authentication failed.", 503);
+  }
+  let body: {
     task_id?: string;
     agent_id?: string;
     output?: string;
     status?: string;
-  }>(request);
+  };
+  try {
+    body = JSON.parse(rawBody) as typeof body;
+  } catch {
+    return fail("Callback body must be valid JSON");
+  }
 
   if (!body?.task_id || !body.output) {
     return fail("task_id and output are required");

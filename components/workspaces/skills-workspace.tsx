@@ -515,6 +515,9 @@ export function SkillsWorkspace() {
                         <Chip>{categoryLabels[skill.category]}</Chip>
                         <Chip>{riskLabels[skill.riskLevel]}</Chip>
                         <Chip>{skillTypeLabels[skill.skillType]}</Chip>
+                        <Chip tone={skill.approvalLevel === "L2" || skill.approvalLevel === "L3" ? "warn" : "muted"}>
+                          {skill.approvalLevel ?? "L0"}
+                        </Chip>
                         <Chip>{sourceLabels[skill.source]}</Chip>
                       </div>
 

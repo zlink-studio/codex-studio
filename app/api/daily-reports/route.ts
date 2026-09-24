@@ -1,12 +1,11 @@
 import { fail, ok, parseJson } from "@/lib/api";
-import { dailyReport } from "@/lib/mock-data";
 import { appendCollectionItem, readCollection } from "@/lib/local-store";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const rows = await readCollection<any>("daily-reports");
-  return ok(rows.length ? rows : [dailyReport]);
+  return ok(rows);
 }
 
 export async function POST(request: Request) {
@@ -21,7 +20,8 @@ export async function POST(request: Request) {
     summary: body.summary,
     wins: body.wins ?? [],
     risks: body.risks ?? [],
-    next_actions: body.next_actions ?? []
+    next_actions: body.next_actions ?? [],
+    content_metrics: body.content_metrics ?? {}
   };
   await appendCollectionItem("daily-reports", record);
   return ok(record, { status: 201 });

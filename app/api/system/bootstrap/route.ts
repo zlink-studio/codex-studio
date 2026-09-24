@@ -15,7 +15,8 @@ const defaultCategories = [
 
 const defaultAgents = [
   {
-    name: "林澈",
+    name: "Kiki",
+    legacy_names: ["林澈", "Codex"],
     department: "Executive",
     title: "执行经理 Agent",
     model: "gpt-4o",
@@ -31,7 +32,8 @@ const defaultAgents = [
     success_rate: 0
   },
   {
-    name: "岑远",
+    name: "Jessie",
+    legacy_names: ["岑远", "林策"],
     department: "Marketing",
     title: "增长营销 Agent",
     model: "gpt-4o-mini",
@@ -47,7 +49,8 @@ const defaultAgents = [
     success_rate: 0
   },
   {
-    name: "许栈",
+    name: "Momo",
+    legacy_names: ["许栈", "岳远", "许诺"],
     department: "Operations",
     title: "运营交付 Agent",
     model: "gpt-4o-mini",
@@ -63,7 +66,59 @@ const defaultAgents = [
     success_rate: 0
   },
   {
-    name: "周砚",
+    name: "Lili",
+    legacy_names: ["言川"],
+    department: "Marketing",
+    title: "社媒文案脚本 Agent",
+    model: "qwen-plus",
+    prompt: "你负责社媒选题、标题、正文、视频分镜和 hashtag 多版本草稿；不直接执行对外发布。",
+    tool_permissions: ["openai", "supabase", "browser"],
+    status: "idle",
+    agent_role: "worker",
+    skills: ["social_copywriting", "content_hooks", "storyboard", "hashtags", "brand_voice"],
+    preferred_model_policy: "creative_content",
+    fallback_provider: "gemini",
+    fallback_model: "gemini-3.1-flash",
+    workload: 0,
+    success_rate: 0
+  },
+  {
+    name: "Vivi",
+    legacy_names: ["映禾"],
+    department: "Marketing",
+    title: "社媒素材制作 Agent",
+    model: "gemini-3.1-flash",
+    prompt: "你把审核中的脚本转成图片或视频生成任务，通过 n8n 调用授权供应商，素材必须回写 Supabase Storage URL。",
+    tool_permissions: ["openai", "supabase", "n8n"],
+    status: "idle",
+    agent_role: "worker",
+    skills: ["image_prompt", "video_storyboard", "brand_assets", "asset_generation", "subtitle_plan"],
+    preferred_model_policy: "creative_content",
+    fallback_provider: "qwen",
+    fallback_model: "qwen-plus",
+    workload: 0,
+    success_rate: 0
+  },
+  {
+    name: "Nini",
+    legacy_names: ["时序"],
+    department: "Operations",
+    title: "社媒排期发布 Agent",
+    model: "deepseek-v4-flash",
+    prompt: "你只发布已通过质检和审批门的内容。自有账号常规发布为 L1，客户账号发布为 L2，所有外部动作统一走 n8n。",
+    tool_permissions: ["supabase", "n8n"],
+    status: "idle",
+    agent_role: "worker",
+    skills: ["content_scheduling", "publish_gate", "xiaohongshu_publish", "callback_reconciliation"],
+    preferred_model_policy: "coding",
+    fallback_provider: "qwen",
+    fallback_model: "qwen-plus",
+    workload: 0,
+    success_rate: 0
+  },
+  {
+    name: "Poppy",
+    legacy_names: ["周砚", "周衍"],
     department: "Finance",
     title: "财务风控 Agent",
     model: "gpt-4o",
@@ -137,9 +192,26 @@ export async function POST() {
     }
   }
 
-  for (const agent of defaultAgents) {
-    const exists = await existsByName("agents", ownerId, agent.name);
-    if (!exists) {
+  for (const agentSeed of defaultAgents) {
+    const { legacy_names, ...agent } = agentSeed;
+    const { data: existingAgent, error: lookupError } = await db
+      .from("agents")
+      .select("id,name,title")
+      .eq("owner_id", ownerId)
+      .or(`name.eq.${agent.name},title.eq.${agent.title}`)
+      .limit(1)
+      .maybeSingle();
+    if (lookupError) return fail(lookupError.message, 500);
+    const legacyAgent = existingAgent
+      ? null
+      : await findLegacyAgent(ownerId, legacy_names);
+    const matchedAgent = existingAgent ?? legacyAgent;
+    if (matchedAgent) {
+      if (matchedAgent.name !== agent.name) {
+        const { error } = await db.from("agents").update({ name: agent.name }).eq("id", matchedAgent.id);
+        if (error) return fail(error.message, 500);
+      }
+    } else {
       const { error } = await db.from("agents").insert({ owner_id: ownerId, ...agent });
       if (error) return fail(error.message, 500);
       result.agents += 1;
@@ -224,5 +296,18 @@ export async function POST() {
     const { data, error } = await db.from(table).select("id").is("owner_id", null).eq(column, value).maybeSingle();
     if (error) throw new Error(error.message);
     return Boolean(data);
+  }
+
+  async function findLegacyAgent(currentOwnerId: string, names: readonly string[]) {
+    if (!names.length) return null;
+    const { data, error } = await db
+      .from("agents")
+      .select("id,name,title")
+      .eq("owner_id", currentOwnerId)
+      .in("name", [...names])
+      .limit(1)
+      .maybeSingle();
+    if (error) throw new Error(error.message);
+    return data;
   }
 }

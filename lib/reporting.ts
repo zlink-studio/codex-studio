@@ -1,4 +1,3 @@
-import { agents, projects, tasks } from "@/lib/mock-data";
 import { createOpenAIClient, defaultModel } from "@/lib/openai";
 import type { Agent, DailyReport, Project, Task } from "@/lib/types";
 
@@ -9,9 +8,9 @@ export async function generateDailyReport(input?: {
   tasks?: Task[];
 }): Promise<DailyReport> {
   const reportDate = input?.reportDate ?? new Date().toISOString().slice(0, 10);
-  const sourceTasks = input?.tasks ?? tasks;
-  const sourceAgents = input?.agents ?? agents;
-  const sourceProjects = input?.projects ?? projects;
+  const sourceTasks = input?.tasks ?? [];
+  const sourceAgents = input?.agents ?? [];
+  const sourceProjects = input?.projects ?? [];
   const client = createOpenAIClient();
 
   if (!client) {

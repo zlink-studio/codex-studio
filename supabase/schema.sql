@@ -85,6 +85,7 @@ create table if not exists public.tasks (
   status text not null default 'todo',
   board_status text not null default 'todo',
   approval_status text not null default 'not_required',
+  approval_level text not null default 'L0' check (approval_level in ('L0', 'L1', 'L2', 'L3')),
   review_status text not null default 'not_required',
   estimated_cost numeric not null default 0,
   actual_cost numeric not null default 0,
@@ -206,7 +207,9 @@ create table if not exists public.meeting_messages (
 create table if not exists public.approvals (
   id uuid primary key default uuid_generate_v4(),
   owner_id uuid not null references public.users(id) on delete cascade,
-  task_id uuid not null references public.tasks(id) on delete cascade,
+  task_id uuid references public.tasks(id) on delete cascade,
+  subject_type text not null default 'task',
+  subject_id text,
   requested_by_agent_id uuid references public.agents(id) on delete set null,
   status text not null default 'pending',
   reason text not null,
@@ -336,6 +339,7 @@ create table if not exists public.daily_reports (
   wins jsonb not null default '[]'::jsonb,
   risks jsonb not null default '[]'::jsonb,
   next_actions jsonb not null default '[]'::jsonb,
+  content_metrics jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now(),
   unique (owner_id, report_date)
 );
@@ -346,8 +350,90 @@ create table if not exists public.tool_connections (
   type text not null,
   name text not null,
   config jsonb not null default '{}'::jsonb,
+  credential_ciphertext text,
+  credential_key_version text,
+  credential_status text not null default 'unconfigured'
+    check (credential_status in ('unconfigured', 'active', 'needs_rotation', 'revoked')),
   is_enabled boolean not null default true,
   last_checked_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  constraint tool_connections_public_config_check check (not (config ?| array[
+    'api_key', 'apiKey', 'access_token', 'accessToken', 'refresh_token', 'refreshToken',
+    'secret', 'client_secret', 'clientSecret', 'password', 'private_key', 'privateKey'
+  ]))
+);
+
+create table if not exists public.credential_access_logs (
+  id uuid primary key default uuid_generate_v4(),
+  owner_id uuid not null references public.users(id) on delete cascade,
+  tool_connection_id uuid references public.tool_connections(id) on delete set null,
+  agent_id uuid references public.agents(id) on delete set null,
+  task_id uuid references public.tasks(id) on delete set null,
+  actor_type text not null check (actor_type in ('system', 'agent', 'owner', 'workflow')),
+  actor_id text not null,
+  purpose text not null,
+  access_type text not null default 'decrypt' check (access_type in ('decrypt', 'rotate', 'revoke')),
+  success boolean not null,
+  error_code text,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.content_items (
+  id uuid primary key default uuid_generate_v4(),
+  owner_id uuid not null references public.users(id) on delete cascade,
+  project_id uuid references public.projects(id) on delete set null,
+  platform text not null default 'xiaohongshu' check (platform in ('xiaohongshu')),
+  account_scope text not null default 'owned' check (account_scope in ('owned', 'client')),
+  account_ref text,
+  format text not null default 'image_text' check (format in ('image_text', 'video')),
+  title text not null,
+  caption text not null,
+  script text,
+  hashtags text[] not null default '{}',
+  asset_prompt text,
+  asset_provider text,
+  asset_urls text[] not null default '{}',
+  cover_url text,
+  asset_status text not null default 'missing' check (asset_status in ('missing', 'generating', 'ready', 'failed')),
+  quality_status text not null default 'pending' check (quality_status in ('pending', 'approved', 'rejected')),
+  quality_score integer check (quality_score is null or (quality_score >= 0 and quality_score <= 100)),
+  quality_checklist jsonb not null default '[]'::jsonb,
+  quality_notes text,
+  approval_level text not null default 'L1' check (approval_level in ('L0', 'L1', 'L2', 'L3')),
+  approval_status text not null default 'not_required' check (approval_status in ('not_required', 'pending', 'approved', 'rejected', 'manual_only')),
+  status text not null default 'draft' check (status in (
+    'draft', 'asset_generating', 'asset_failed', 'review', 'rejected', 'pending_approval',
+    'approved', 'scheduled', 'publish_queued', 'publishing', 'published', 'publish_failed', 'cancelled'
+  )),
+  scheduled_at timestamptz,
+  queued_at timestamptz,
+  published_at timestamptz,
+  publication_id text,
+  publication_url text,
+  n8n_execution_id text,
+  idempotency_key text not null unique,
+  publish_attempts integer not null default 0,
+  next_attempt_at timestamptz,
+  last_error text,
+  performance_metrics jsonb not null default '{}'::jsonb,
+  manual_minutes integer not null default 0 check (manual_minutes >= 0),
+  created_by_agent_id uuid references public.agents(id) on delete set null,
+  reviewed_by_agent_id uuid references public.agents(id) on delete set null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.content_item_events (
+  id uuid primary key default uuid_generate_v4(),
+  owner_id uuid not null references public.users(id) on delete cascade,
+  content_item_id uuid not null references public.content_items(id) on delete cascade,
+  event_type text not null,
+  actor_type text not null default 'system',
+  actor_id text,
+  external_event_id text,
+  details jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -362,6 +448,8 @@ create index if not exists memories_owner_type_idx on public.memories(owner_id, 
 create index if not exists memories_owner_status_idx on public.memories(owner_id, status, scope);
 create index if not exists memories_category_idx on public.memories(category_id, status);
 create index if not exists memories_project_agent_idx on public.memories(project_id, agent_id);
+create unique index if not exists memories_owner_obsidian_source_idx on public.memories(owner_id, source_id)
+  where source_type = 'obsidian' and source_id is not null;
 create index if not exists memory_relations_memory_idx on public.memory_relations(memory_id, relation_type);
 create index if not exists memory_review_owner_status_idx on public.memory_review_queue(owner_id, review_status);
 create index if not exists memory_access_logs_memory_idx on public.memory_access_logs(memory_id, created_at);
@@ -373,6 +461,14 @@ create index if not exists model_catalog_provider_model_idx on public.model_cata
 create index if not exists model_policies_lookup_idx on public.model_policies(agent_role, task_type, risk_level, enabled);
 create index if not exists model_runs_agent_run_idx on public.model_runs(agent_run_id, created_at);
 create index if not exists model_runs_task_created_idx on public.model_runs(task_id, created_at);
+create index if not exists credential_access_logs_owner_created_idx on public.credential_access_logs(owner_id, created_at desc);
+create index if not exists credential_access_logs_connection_created_idx on public.credential_access_logs(tool_connection_id, created_at desc);
+create unique index if not exists content_item_events_external_event_idx on public.content_item_events(external_event_id) where external_event_id is not null;
+create index if not exists content_items_owner_status_schedule_idx on public.content_items(owner_id, status, scheduled_at);
+create index if not exists content_items_project_created_idx on public.content_items(project_id, created_at desc);
+create index if not exists content_items_publish_metrics_idx on public.content_items(owner_id, published_at desc) where status = 'published';
+create index if not exists content_item_events_item_created_idx on public.content_item_events(content_item_id, created_at desc);
+create index if not exists approvals_subject_status_idx on public.approvals(owner_id, subject_type, subject_id, status);
 
 alter table public.users enable row level security;
 alter table public.agents enable row level security;
@@ -398,6 +494,9 @@ alter table public.model_policies enable row level security;
 alter table public.model_runs enable row level security;
 alter table public.daily_reports enable row level security;
 alter table public.tool_connections enable row level security;
+alter table public.credential_access_logs enable row level security;
+alter table public.content_items enable row level security;
+alter table public.content_item_events enable row level security;
 
 create policy "Users can read own profile" on public.users
   for select using (auth.uid() = id);
@@ -506,3 +605,12 @@ create policy "Owners manage daily reports" on public.daily_reports
 
 create policy "Owners manage tool connections" on public.tool_connections
   for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+
+create policy "Owners read credential access logs" on public.credential_access_logs
+  for select using (auth.uid() = owner_id);
+
+create policy "Owners manage content items" on public.content_items
+  for all using (auth.uid() = owner_id) with check (auth.uid() = owner_id);
+
+create policy "Owners read content item events" on public.content_item_events
+  for select using (auth.uid() = owner_id);

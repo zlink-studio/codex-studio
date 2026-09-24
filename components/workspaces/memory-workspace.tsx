@@ -2,7 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookOpen, GitBranch, Network, Plus, Save, Search, Sparkles } from "lucide-react";
+import { BookOpen, GitBranch, Network, Plus, RefreshCw, Save, Search, Sparkles } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { readApiData } from "@/lib/client-normalizers";
 import { cn } from "@/lib/utils";
@@ -36,6 +36,7 @@ type GraphEdge = {
 };
 
 type VaultData = {
+  name: string;
   notes: VaultNote[];
   graph: {
     nodes: GraphNode[];
@@ -46,13 +47,16 @@ type VaultData = {
     links: number;
     tags: number;
     orphanNotes: number;
+    retrospectiveDrafts: number;
+    awaitingSync: number;
   };
 };
 
 const emptyVault: VaultData = {
+  name: "未配置",
   notes: [],
   graph: { nodes: [], edges: [] },
-  stats: { notes: 0, links: 0, tags: 0, orphanNotes: 0 }
+  stats: { notes: 0, links: 0, tags: 0, orphanNotes: 0, retrospectiveDrafts: 0, awaitingSync: 0 }
 };
 
 const typeLabels: Record<string, string> = {
@@ -83,6 +87,7 @@ export function MemoryWorkspace() {
   const [draft, setDraft] = useState({ title: "", type: "company", tags: "", content: "" });
   const [message, setMessage] = useState("正在加载 Obsidian Vault...");
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const refresh = useCallback(async (nextSelectedId?: string) => {
     try {
@@ -182,6 +187,27 @@ export function MemoryWorkspace() {
     }
   }
 
+  async function syncRetrospectives() {
+    setSyncing(true);
+    try {
+      const result = await fetch("/api/obsidian-vault/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}"
+      }).then((response) =>
+        readApiData<{ scanned: number; awaitingHumanEdit: number; queued: number; alreadyQueued: number; errors: string[] }>(response)
+      );
+      await refresh();
+      setMessage(
+        `复盘同步完成：${result.queued} 篇进入审核，${result.awaitingHumanEdit} 篇仍待人工编辑${result.errors.length ? `，${result.errors.length} 篇失败` : ""}。`
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "复盘同步失败。");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -189,14 +215,25 @@ export function MemoryWorkspace() {
         title="公司大脑知识图谱"
         description="长期记忆现在保存为本地 Markdown 笔记，用双链组织 SOP、项目、员工、客户与复盘。"
         action={
-          <button
-            type="button"
-            onClick={startNewNote}
-            className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/10"
-          >
-            <Plus size={16} />
-            新建笔记
-          </button>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void syncRetrospectives()}
+              disabled={syncing}
+              className="inline-flex items-center gap-2 rounded-full border border-line/70 bg-white/55 px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50 dark:bg-white/8"
+            >
+              <RefreshCw size={16} className={syncing ? "animate-spin" : ""} />
+              同步人工复盘 ({vault.stats.awaitingSync})
+            </button>
+            <button
+              type="button"
+              onClick={startNewNote}
+              className="inline-flex items-center gap-2 rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-slate-900/10"
+            >
+              <Plus size={16} />
+              新建笔记
+            </button>
+          </div>
         }
       />
 
@@ -262,7 +299,7 @@ export function MemoryWorkspace() {
                 <p className="mt-1 text-sm text-moss">节点来自 Markdown 笔记，连线来自 [[双链]]。</p>
               </div>
               <p className="rounded-full border border-line/70 bg-white/45 px-3 py-1.5 text-xs text-moss dark:bg-white/5">
-                Vault: work/obsidian-vault
+                Vault: {vault.name}
               </p>
             </div>
 

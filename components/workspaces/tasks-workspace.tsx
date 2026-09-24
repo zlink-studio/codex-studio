@@ -584,7 +584,8 @@ export function TasksWorkspace() {
                       <StatusBadge value={selectedTask.boardStatus ?? selectedTask.status} />
                     </div>
 
-                    <div className="mt-4 grid gap-3 md:grid-cols-3">
+                    <div className="mt-4 grid gap-3 md:grid-cols-4">
+                      <InfoBox label="审批级别" value={selectedTask.approvalLevel ?? "L0"} />
                       <InfoBox
                         label="负责人"
                         value={
@@ -881,7 +882,9 @@ function KanbanCard({
           {agentName}
         </span>
         <StatusBadge value={task.riskLevel} />
-        {task.approvalStatus === "pending" ? <StatusBadge value={task.approvalStatus} /> : null}
+        {task.approvalStatus === "pending" || task.approvalStatus === "manual_only" ? (
+          <StatusBadge value={task.approvalStatus} />
+        ) : null}
         {task.reviewStatus && task.reviewStatus !== "not_required" ? <StatusBadge value={task.reviewStatus} /> : null}
       </div>
 

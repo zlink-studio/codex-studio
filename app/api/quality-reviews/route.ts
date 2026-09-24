@@ -73,8 +73,8 @@ export async function PATCH(request: Request) {
       status: "done",
       board_status: "done",
       review_status: "approved",
-      approval_status: "not_required",
-      approval_required: false,
+      approval_status: task.approval_status ?? "not_required",
+      approval_required: task.approval_level === "L2" || task.approval_level === "L3",
       updated_at: new Date().toISOString()
     };
     for (const deliverable of deliverables.filter((item) => item.task_id === taskId)) {
@@ -88,8 +88,8 @@ export async function PATCH(request: Request) {
       status: "in_progress",
       board_status: "in_progress",
       review_status: "rejected",
-      approval_status: "not_required",
-      approval_required: false,
+      approval_status: task.approval_status ?? "not_required",
+      approval_required: task.approval_level === "L2" || task.approval_level === "L3",
       updated_at: new Date().toISOString()
     };
     projectEventTitle = "复核要求修改";
@@ -99,8 +99,8 @@ export async function PATCH(request: Request) {
       status: "review",
       board_status: "review",
       review_status: "pending",
-      approval_status: "not_required",
-      approval_required: false,
+      approval_status: task.approval_status ?? "not_required",
+      approval_required: task.approval_level === "L2" || task.approval_level === "L3",
       updated_at: new Date().toISOString()
     };
     projectEventTitle = "复核继续推进";
@@ -110,8 +110,8 @@ export async function PATCH(request: Request) {
       status: "blocked",
       board_status: "blocked",
       review_status: "rejected",
-      approval_status: "not_required",
-      approval_required: false,
+      approval_status: task.approval_status ?? "not_required",
+      approval_required: task.approval_level === "L2" || task.approval_level === "L3",
       updated_at: new Date().toISOString()
     };
     projectEventTitle = "复核拒绝";

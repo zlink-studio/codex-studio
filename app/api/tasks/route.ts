@@ -1,4 +1,5 @@
 import { cleanEmptyRelations, fail, ok, parseJson } from "@/lib/api";
+import { classifyTaskApproval, taskApprovalState } from "@/lib/approval-policy";
 import { appendCollectionItem, patchCollectionItem, readCollection, writeCollection } from "@/lib/local-store";
 import { syncProjectState } from "@/lib/workflow-engine";
 
@@ -15,15 +16,26 @@ export async function POST(request: Request) {
   }
 
   const riskLevel = String(body.risk_level ?? body.riskLevel ?? "low");
-  const needsApproval = riskLevel === "high" || riskLevel === "critical";
+  const skills = await readCollection<any>("skills");
+  const suggestedSkills = Array.isArray(body.suggested_skills ?? body.suggestedSkills)
+    ? ((body.suggested_skills ?? body.suggestedSkills) as unknown[]).map(String)
+    : [];
+  const selectedSkills = skills.filter((skill) => suggestedSkills.includes(String(skill.slug)));
+  const approvalDecision = classifyTaskApproval({ ...body, risk_level: riskLevel }, selectedSkills);
+  const approvalState = taskApprovalState(approvalDecision);
+  const requestedStatus = String(body.board_status ?? body.status ?? "todo");
+  const initialStatus = approvalDecision.level === "L0" || approvalDecision.level === "L1"
+    ? requestedStatus
+    : approvalState.status;
   const taskPayload: any = {
     id: crypto.randomUUID(),
     ...cleanEmptyRelations(body, ["project_id", "assigned_agent_id"]),
     risk_level: riskLevel,
-    approval_required: Boolean(body.approval_required ?? body.approvalRequired ?? needsApproval),
-    approval_status: needsApproval ? "pending" : body.approval_status ?? "not_required",
-    board_status: needsApproval ? "waiting_boss_approval" : body.board_status ?? body.status ?? "todo",
-    status: needsApproval ? "waiting_boss_approval" : body.status ?? "todo",
+    approval_level: approvalDecision.level,
+    approval_required: approvalState.approval_required,
+    approval_status: approvalState.approval_status,
+    board_status: initialStatus,
+    status: initialStatus,
     review_status: body.review_status ?? "not_required",
     assigned_agent_role: body.assigned_agent_role ?? body.assignedAgentRole ?? null,
     model_policy: body.model_policy ?? body.modelPolicy ?? null,
@@ -37,12 +49,14 @@ export async function POST(request: Request) {
 
   await appendCollectionItem<any>("tasks", taskPayload);
 
-  if (needsApproval) {
+  if (approvalDecision.level === "L2" || approvalDecision.level === "L3") {
     await appendCollectionItem<any>("approvals", {
       id: crypto.randomUUID(),
       task_id: taskPayload.id,
-      status: "pending",
-      decision_note: "高风险任务需要确认后再执行。",
+      requested_by_agent_id: taskPayload.assigned_agent_id ?? null,
+      status: approvalDecision.level === "L3" ? "manual_only" : "pending",
+      reason: approvalDecision.reasons.join("；") || `${approvalDecision.level} 动作策略`,
+      decision_note: approvalDecision.level === "L3" ? "L3 动作仅允许主理人人工执行。" : null,
       created_at: new Date().toISOString(),
       decided_at: null
     });
@@ -66,6 +80,9 @@ export async function PATCH(request: Request) {
   }
   if ((boardStatus === "in_progress" || boardStatus === "review") && currentTask.approval_status === "rejected") {
     return fail("This task was rejected and cannot move into execution.", 409);
+  }
+  if ((boardStatus === "in_progress" || boardStatus === "review") && currentTask.approval_status === "manual_only") {
+    return fail("L3 tasks are manual-only and cannot move into Agent execution.", 409);
   }
 
   const nextOutputs =
@@ -91,17 +108,74 @@ export async function PATCH(request: Request) {
     "assigned_agent_id",
     "parent_task_id"
   ]);
+  const policyFields = [
+    "title",
+    "description",
+    "task_type",
+    "taskType",
+    "suggested_skills",
+    "suggestedSkills",
+    "risk_level",
+    "riskLevel",
+    "approval_level",
+    "approvalLevel",
+    "approval_required",
+    "approvalRequired"
+  ];
+  const policyChanged = policyFields.some((field) => field in bodyWithoutId);
+  const patchedSkillValue =
+    bodyWithoutId.suggested_skills ??
+    bodyWithoutId.suggestedSkills ??
+    currentTask.suggested_skills ??
+    currentTask.suggestedSkills;
+  const patchedSuggestedSkills = Array.isArray(patchedSkillValue)
+    ? (patchedSkillValue as unknown[]).map(String)
+    : [];
+  const selectedSkillsForPatch = policyChanged
+    ? (await readCollection<any>("skills")).filter((skill) => patchedSuggestedSkills.includes(String(skill.slug)))
+    : [];
+  const approvalDecisionForPatch = policyChanged
+    ? classifyTaskApproval({ ...currentTask, ...bodyWithoutId }, selectedSkillsForPatch)
+    : null;
+  const approvalPatch = approvalDecisionForPatch ? taskApprovalState(approvalDecisionForPatch) : null;
   const patch = {
     ...bodyWithoutId,
     ...(nextOutputs ? { outputs: nextOutputs } : {}),
     ...(boardStatus ? { board_status: boardStatus } : {}),
     ...(status ? { status } : {}),
     ...(reviewStatus ? { review_status: reviewStatus } : {}),
+    ...(approvalPatch
+      ? {
+          approval_level: approvalPatch.approval_level,
+          approval_required: approvalPatch.approval_required,
+          approval_status: approvalPatch.approval_status,
+          status: approvalPatch.status,
+          board_status: approvalPatch.board_status
+        }
+      : {}),
     updated_at: new Date().toISOString()
   };
 
   const task = await patchCollectionItem<any>("tasks", body.id, patch);
   if (!task) return fail("task not found", 404);
+
+  if (approvalDecisionForPatch?.level === "L2" || approvalDecisionForPatch?.level === "L3") {
+    const approvals = await readCollection<any>("approvals");
+    const pendingStatus = approvalDecisionForPatch.level === "L3" ? "manual_only" : "pending";
+    const existing = approvals.find((item) => item.task_id === task.id && item.status === pendingStatus);
+    if (!existing) {
+      await appendCollectionItem("approvals", {
+        id: crypto.randomUUID(),
+        task_id: task.id,
+        requested_by_agent_id: task.assigned_agent_id ?? null,
+        status: pendingStatus,
+        reason: approvalDecisionForPatch.reasons.join("；") || `${approvalDecisionForPatch.level} 动作策略`,
+        decision_note: approvalDecisionForPatch.level === "L3" ? "L3 动作仅允许主理人人工执行。" : null,
+        decided_at: null,
+        created_at: new Date().toISOString()
+      });
+    }
+  }
 
   if (boardStatus === "review") {
     const reviews = await readCollection<any>("quality-reviews");

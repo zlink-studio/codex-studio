@@ -1,9 +1,8 @@
 import { fail, ok, parseJson } from "@/lib/api";
-import { agents } from "@/lib/mock-data";
 import { appendCollectionItem, patchCollectionItem, readCollection } from "@/lib/local-store";
 
 export async function GET() {
-  return ok(await readCollection<typeof agents[number]>("agents"));
+  return ok(await readCollection<Record<string, unknown>>("agents"));
 }
 
 export async function POST(request: Request) {
@@ -17,7 +16,7 @@ export async function POST(request: Request) {
     id: crypto.randomUUID(),
     status: body.status ?? "idle"
   };
-  await appendCollectionItem("agents", record as typeof agents[number]);
+  await appendCollectionItem("agents", record);
   return ok(record, { status: 201 });
 }
 
@@ -25,7 +24,11 @@ export async function PATCH(request: Request) {
   const body = await parseJson<Record<string, unknown>>(request);
   if (!body?.id || typeof body.id !== "string") return fail("id is required");
 
-  const updated = await patchCollectionItem<typeof agents[number]>("agents", body.id, body as Partial<typeof agents[number]>);
+  const updated = await patchCollectionItem<Record<string, unknown> & { id: string }>(
+    "agents",
+    body.id,
+    body as Partial<Record<string, unknown> & { id: string }>
+  );
   if (!updated) return fail("agent not found", 404);
   return ok(updated);
 }

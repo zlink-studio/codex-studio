@@ -1,5 +1,7 @@
 import { fail, ok, parseJson } from "@/lib/api";
-import { readObsidianVault, upsertObsidianNote } from "@/lib/obsidian-vault";
+import { ObsidianVaultConfigurationError, readObsidianVault, upsertObsidianNote } from "@/lib/obsidian-vault";
+
+export const dynamic = "force-dynamic";
 
 type NoteBody = {
   id?: string;
@@ -11,9 +13,12 @@ type NoteBody = {
 
 export async function GET() {
   try {
-    return ok(await readObsidianVault());
+    return ok(await readObsidianVault(), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
-    return fail(error instanceof Error ? error.message : "Failed to read Obsidian vault.", 500);
+    return fail(
+      error instanceof Error ? error.message : "Failed to read Obsidian vault.",
+      error instanceof ObsidianVaultConfigurationError ? 503 : 500
+    );
   }
 }
 
@@ -33,6 +38,9 @@ export async function POST(request: Request) {
     });
     return ok(note, { status: 201 });
   } catch (error) {
-    return fail(error instanceof Error ? error.message : "Failed to save note.", 500);
+    return fail(
+      error instanceof Error ? error.message : "Failed to save note.",
+      error instanceof ObsidianVaultConfigurationError ? 503 : 500
+    );
   }
 }

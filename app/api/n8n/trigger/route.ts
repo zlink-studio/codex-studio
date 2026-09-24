@@ -1,4 +1,5 @@
 import { fail, ok, parseJson } from "@/lib/api";
+import { createHmac } from "node:crypto";
 
 export async function POST(request: Request) {
   const body = await parseJson<Record<string, unknown>>(request);
@@ -11,12 +12,16 @@ export async function POST(request: Request) {
     return ok({ payload: body, triggered: false, reason: "N8N_WEBHOOK_URL is not configured" });
   }
 
+  const payload = JSON.stringify(body);
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (process.env.N8N_OUTBOUND_SECRET) {
+    headers["X-ZLink-Signature"] = createHmac("sha256", process.env.N8N_OUTBOUND_SECRET).update(payload).digest("hex");
+  }
   const response = await fetch(webhookUrl, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify(body)
+    headers,
+    body: payload,
+    cache: "no-store"
   });
 
   if (!response.ok) {

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 import type { LLMProviderAdapter, RunLLMInput, RunLLMResult } from "@/lib/llm/types";
@@ -67,18 +68,23 @@ async function runViaOpenClawCli(
     const nodeDir = path.join(process.cwd(), "tools", "node");
     const nodeBin = path.join(nodeDir, process.platform === "win32" ? "node.exe" : "node");
     const openclawDir = path.join(process.cwd(), "tools", "openclaw-prefix");
+    const hasBundledCli = fs.existsSync(nodeBin) && fs.existsSync(openclawEntry);
+    const executable = hasBundledCli ? nodeBin : process.platform === "win32" ? "openclaw.cmd" : "openclaw";
     const prompt = buildPrompt(input);
+    const args = ["infer", "model", "run", "--local", "--json", "--model", model, "--prompt", prompt];
 
     const { stdout } = await execFileAsync(
-      nodeBin,
-      [openclawEntry, "infer", "model", "run", "--local", "--json", "--model", model, "--prompt", prompt],
+      executable,
+      hasBundledCli ? [openclawEntry, ...args] : args,
       {
         cwd: process.cwd(),
         timeout: Number(process.env.OPENCLAW_CLI_TIMEOUT_MS ?? 180000),
         maxBuffer: 1024 * 1024 * 4,
         env: {
           ...process.env,
-          PATH: `${nodeDir}${path.delimiter}${openclawDir}${path.delimiter}${process.env.PATH ?? ""}`
+          PATH: hasBundledCli
+            ? `${nodeDir}${path.delimiter}${openclawDir}${path.delimiter}${process.env.PATH ?? ""}`
+            : process.env.PATH ?? ""
         }
       }
     );
@@ -217,5 +223,6 @@ function parseFirstJsonObject<T>(value: string): T {
 function normalizeModel(model: string) {
   if (model.startsWith("openai/")) return model;
   if (model.startsWith("codex/")) return model.replace(/^codex\//, "openai/");
+  if (model.includes("/")) return model;
   return `openai/${model}`;
 }

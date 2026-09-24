@@ -1,4 +1,5 @@
 import { fail, ok, parseJson } from "@/lib/api";
+import { classifyApproval } from "@/lib/approval-policy";
 import { appendCollectionItem, patchCollectionItem, readCollection } from "@/lib/local-store";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
 
   const now = new Date().toISOString();
   const enabled = Boolean(body.enabled ?? false);
-  const record = {
+  const baseRecord = {
     id: crypto.randomUUID(),
     name: String(body.name),
     slug,
@@ -44,6 +45,12 @@ export async function POST(request: Request) {
     installed_at: body.installed_at ?? (enabled ? now : null),
     created_at: now,
     updated_at: now
+  };
+  const approvalDecision = classifyApproval(baseRecord);
+  const record = {
+    ...baseRecord,
+    approval_level: approvalDecision.level,
+    approval_required: baseRecord.approval_required
   };
 
   await appendCollectionItem<any>("skills", record);
@@ -75,7 +82,7 @@ export async function PATCH(request: Request) {
   if (!current) return fail("skill not found", 404);
 
   const enabled = typeof body.enabled === "boolean" ? body.enabled : current.enabled;
-  const patch = {
+  const patch: Record<string, unknown> = {
     ...body,
     enabled,
     install_status:
@@ -84,6 +91,12 @@ export async function PATCH(request: Request) {
     installed_at: body.installed_at ?? (enabled && !current.installed_at ? new Date().toISOString() : current.installed_at ?? null),
     updated_at: new Date().toISOString()
   };
+
+  const approvalDecision = classifyApproval({ ...current, ...patch });
+  Object.assign(patch, {
+    approval_level: approvalDecision.level,
+    approval_required: Boolean(patch.approval_required ?? current.approval_required)
+  });
 
   const updated = await patchCollectionItem<any>("skills", body.id, patch);
   if (!updated) return fail("skill not found", 404);

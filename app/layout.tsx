@@ -4,13 +4,13 @@ import { AppShell } from "@/components/app-shell";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "一人公司 AI 数字员工工作台",
-  description: "面向一人公司的 AI 员工管理、任务推进、技能编排、会议协作与知识沉淀工作台。"
+  title: "ZLink Studio OS",
+  description: "面向一人工作室的客户服务、Agent 执行与运营决策系统。"
 };
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="zh-CN" data-theme="light">
+    <html lang="zh-CN" data-theme="dark" className="dark">
       <body className="font-sans antialiased">
         <AppShell>{children}</AppShell>
       </body>

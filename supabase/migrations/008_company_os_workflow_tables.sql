@@ -11,6 +11,7 @@ alter table public.tasks
   add column if not exists output_requirements text,
   add column if not exists result text,
   add column if not exists approval_required boolean not null default false,
+  add column if not exists approval_level text not null default 'L0',
   add column if not exists used_memory_ids jsonb not null default '[]'::jsonb,
   add column if not exists model_run jsonb,
   add column if not exists rework_count integer not null default 0;
@@ -30,6 +31,7 @@ create table if not exists public.skills (
   required_tools text[] not null default '{}',
   required_memory_types text[] not null default '{}',
   approval_required boolean not null default false,
+  approval_level text not null default 'L0',
   source text not null default 'custom',
   source_url text,
   license text,

@@ -4,8 +4,10 @@ import { syncProjectState } from "@/lib/workflow-engine";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   const projects = await readCollection<any>("projects");
+  const refresh = new URL(request.url).searchParams.get("refresh") === "1";
+  if (!refresh) return ok(projects);
   const refreshed = await Promise.all(
     projects.map(async (project) => (await syncProjectState(project.id)) ?? project)
   );

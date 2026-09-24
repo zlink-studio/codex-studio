@@ -1,3 +1,4 @@
+import { assertTaskExecutionAllowed, classifyApproval } from "@/lib/approval-policy";
 import { appendCollectionItem, patchCollectionItem, readCollection } from "@/lib/local-store";
 
 type TaskRow = {
@@ -19,6 +20,8 @@ type TaskRow = {
   review_status?: string;
   approvalStatus?: string;
   approval_status?: string;
+  approvalLevel?: string;
+  approval_level?: string;
   outputs?: Array<{ agentId: string; content: string; createdAt: string }>;
 };
 
@@ -45,7 +48,11 @@ type SkillRow = {
   slug: string;
   category?: string;
   risk_level?: string;
+  skill_type?: string;
+  approval_level?: string;
   approval_required?: boolean;
+  description?: string;
+  instructions?: string;
   enabled?: boolean;
 };
 
@@ -85,6 +92,10 @@ export async function executeTaskById(taskId: string, preferredAgentId?: string 
 
   const startedAt = new Date().toISOString();
   const selectedSkills = selectSkillsForTask(task, agent.id, agentSkills, skills);
+  const approvalDecision = assertTaskExecutionAllowed(
+    task as unknown as Record<string, unknown>,
+    selectedSkills as Array<Record<string, unknown>>
+  );
   const executedSkillRuns = buildSkillRuns(task, agent, selectedSkills, skillReviews, startedAt);
   const approvedSkills = executedSkillRuns.filter((item) => item.status === "success");
   const gatedSkills = executedSkillRuns.filter((item) => item.status === "pending_approval");
@@ -144,6 +155,7 @@ export async function executeTaskById(taskId: string, preferredAgentId?: string 
     status: "review",
     board_status: "review",
     review_status: "pending",
+    approval_level: approvalDecision.level,
     updated_at: finishedAt
   } as Partial<TaskRow>);
 
@@ -252,7 +264,10 @@ function buildSkillRuns(
   return selectedSkills.map((skill) => {
     const review = skillReviews.find((item) => (item.skill_id ?? item.skillId) === skill.id);
     const approved = !skill.approval_required || (review?.review_status ?? review?.reviewStatus) === "approved";
-    const status = approved ? "success" : "pending_approval";
+    const decision = classifyApproval(skill as unknown as Record<string, unknown>);
+    const taskApprovalStatus = task.approval_status ?? task.approvalStatus ?? "not_required";
+    const policyAllows = decision.level !== "L3" && (decision.level !== "L2" || taskApprovalStatus === "approved");
+    const status = approved && policyAllows ? "success" : "pending_approval";
 
     return {
       id: crypto.randomUUID(),

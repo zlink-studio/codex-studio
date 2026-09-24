@@ -11,7 +11,8 @@ export type AgentDepartment =
 
 export type TaskPriority = "low" | "medium" | "high" | "urgent";
 export type RiskLevel = "low" | "medium" | "high" | "critical";
-export type ApprovalStatus = "not_required" | "pending" | "approved" | "rejected";
+export type ApprovalLevel = "L0" | "L1" | "L2" | "L3";
+export type ApprovalStatus = "not_required" | "pending" | "approved" | "rejected" | "manual_only";
 export type TaskStatus =
   | "backlog"
   | "todo"
@@ -37,7 +38,7 @@ export type MemoryType = "company" | "client" | "project" | "agent" | "sop" | "r
 export type MemoryCategoryType = MemoryType | "source";
 export type MemoryScope = "global" | "client" | "project" | "agent";
 export type MemoryStatus = "draft" | "pending_review" | "approved" | "rejected" | "archived";
-export type MemorySourceType = "manual" | "upload" | "task" | "meeting" | "file" | "email" | "agent_run" | "wps" | "kdocs" | "notion" | "google_drive";
+export type MemorySourceType = "manual" | "upload" | "task" | "meeting" | "file" | "email" | "agent_run" | "wps" | "kdocs" | "notion" | "google_drive" | "obsidian";
 export type MemoryAccessType = "retrieve" | "create" | "update" | "approve" | "reject" | "archive";
 export type MemoryReviewStatus = "pending" | "approved" | "rejected";
 export type MemoryRelationType = "created_from" | "used_by" | "belongs_to" | "supports" | "conflicts_with";
@@ -85,6 +86,23 @@ export type ModelProviderName =
 export type ModelProviderStatus = "configured" | "missing_key" | "disabled" | "error";
 export type ModelCatalogCapability = "chat" | "json" | "tools" | "vision" | "embedding" | "long_context";
 export type ModelRunStatus = "success" | "error" | "fallback" | "succeeded" | "failed";
+export type ContentPlatform = "xiaohongshu";
+export type ContentAccountScope = "owned" | "client";
+export type ContentFormat = "image_text" | "video";
+export type ContentStatus =
+  | "draft"
+  | "asset_generating"
+  | "asset_failed"
+  | "review"
+  | "rejected"
+  | "pending_approval"
+  | "approved"
+  | "scheduled"
+  | "publish_queued"
+  | "publishing"
+  | "published"
+  | "publish_failed"
+  | "cancelled";
 
 export type Agent = {
   id: string;
@@ -142,6 +160,7 @@ export type Task = {
   status: TaskStatus;
   boardStatus?: BoardStatus;
   approvalStatus: ApprovalStatus;
+  approvalLevel?: ApprovalLevel;
   approvalRequired?: boolean;
   reviewStatus?: ReviewStatus;
   modelPolicy?: string | null;
@@ -391,6 +410,7 @@ export type Skill = {
   requiredTools: ToolConnectionType[];
   requiredMemoryTypes: MemoryType[];
   approvalRequired: boolean;
+  approvalLevel?: ApprovalLevel;
   source: SkillSource;
   sourceUrl?: string | null;
   license?: string | null;

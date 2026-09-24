@@ -7,10 +7,10 @@ on conflict (id) do update set display_name = excluded.display_name;
 
 insert into public.agents (id, owner_id, name, department, title, model, prompt, tool_permissions, status, current_focus, success_rate)
 values
-  ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000', '林澈', 'Executive', '执行经理 Agent', 'gpt-4o', '负责目标拆解、任务编排、风险识别和会议主持。', array['openai','supabase','n8n','email'], 'online', '拆解老板今日增长目标', 94),
-  ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000000', '岑远', 'Marketing', '增长营销 Agent', 'gpt-4o-mini', '负责用户洞察、渠道策略、内容日历和广告创意。', array['openai','browser','n8n'], 'busy', '设计获客内容矩阵', 88),
+  ('10000000-0000-0000-0000-000000000001', '00000000-0000-0000-0000-000000000000', 'Kiki', 'Executive', '执行经理 Agent', 'gpt-4o', '负责目标拆解、任务编排、风险识别和会议主持。', array['openai','supabase','n8n','email'], 'online', '拆解老板今日增长目标', 94),
+  ('10000000-0000-0000-0000-000000000002', '00000000-0000-0000-0000-000000000000', 'Jessie', 'Marketing', '增长营销 Agent', 'gpt-4o-mini', '负责用户洞察、渠道策略、内容日历和广告创意。', array['openai','browser','n8n'], 'busy', '设计获客内容矩阵', 88),
   ('10000000-0000-0000-0000-000000000003', '00000000-0000-0000-0000-000000000000', '许栖', 'Operations', '运营交付 Agent', 'gpt-4o-mini', '负责 SOP、项目推进、客户交付和复盘。', array['openai','supabase','email'], 'online', '整理客户交付 SOP', 91),
-  ('10000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000000', '周砚', 'Finance', '财务风控 Agent', 'gpt-4o-mini', '负责预算、现金流、合同风险和高风险任务审查。', array['openai','supabase'], 'idle', '等待审批任务', 86)
+  ('10000000-0000-0000-0000-000000000004', '00000000-0000-0000-0000-000000000000', 'Poppy', 'Finance', '财务风控 Agent', 'gpt-4o-mini', '负责预算、现金流、合同风险和高风险任务审查。', array['openai','supabase'], 'idle', '等待审批任务', 86)
 on conflict (id) do nothing;
 
 insert into public.projects (id, owner_id, name, client_name, objective, client_profile, progress, stage, due_date)

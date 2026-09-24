@@ -146,6 +146,7 @@ const cloudConfig: Partial<Record<CollectionName, { table: string; columns: stri
       "status",
       "board_status",
       "approval_status",
+      "approval_level",
       "approval_required",
       "review_status",
       "input_requirements",
@@ -211,6 +212,8 @@ const cloudConfig: Partial<Record<CollectionName, { table: string; columns: stri
       "id",
       "owner_id",
       "task_id",
+      "subject_type",
+      "subject_id",
       "requested_by_agent_id",
       "status",
       "reason",
@@ -255,6 +258,7 @@ const cloudConfig: Partial<Record<CollectionName, { table: string; columns: stri
       "required_tools",
       "required_memory_types",
       "approval_required",
+      "approval_level",
       "source",
       "source_url",
       "license",
@@ -324,30 +328,10 @@ const cloudConfig: Partial<Record<CollectionName, { table: string; columns: stri
   },
   "daily-reports": {
     table: "daily_reports",
-    columns: ["id", "owner_id", "report_date", "summary", "wins", "risks", "next_actions", "created_at"]
+    columns: ["id", "owner_id", "report_date", "summary", "wins", "risks", "next_actions", "content_metrics", "created_at"]
   }
 };
 
-const cloudSeedOrder: CollectionName[] = [
-  "skills",
-  "agent-skills",
-  "skill-reviews",
-  "agents",
-  "projects",
-  "tasks",
-  "agent-runs",
-  "model-runs",
-  "skill-runs",
-  "task-logs",
-  "quality-reviews",
-  "approvals",
-  "deliverables",
-  "project-logs",
-  "daily-reports"
-];
-
-let cloudSeedPromise: Promise<void> | null = null;
-let cloudDisabledUntil = 0;
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -455,12 +439,22 @@ function getOwnerId() {
   return process.env.DEMO_OWNER_ID ?? null;
 }
 
-function isCloudBacked(name: CollectionName): boolean {
-  return Boolean(cloudConfig[name] && getSupabase() && getOwnerId() && Date.now() > cloudDisabledUntil);
+export function isLocalStoreEnabled() {
+  return process.env.USE_LOCAL_STORE === "true";
 }
 
-function markCloudUnavailable() {
-  cloudDisabledUntil = Date.now() + 5 * 60 * 1000;
+function requireCloudBacked(name: CollectionName) {
+  if (!cloudConfig[name]) {
+    throw new Error(`Collection ${name} is not configured for Supabase storage.`);
+  }
+  if (!getSupabase()) {
+    throw new Error(
+      "Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, or explicitly set USE_LOCAL_STORE=true for offline development."
+    );
+  }
+  if (!getOwnerId()) {
+    throw new Error("DEMO_OWNER_ID is required when Supabase storage is enabled.");
+  }
 }
 
 function isUuid(value: unknown): value is string {
@@ -475,77 +469,6 @@ function getRowValue(row: AnyRow, ...keys: string[]) {
     }
   }
   return undefined;
-}
-
-function shouldSyncRow(name: CollectionName, row: AnyRow) {
-  switch (name) {
-    case "agents":
-      return isUuid(row.id);
-    case "projects":
-      return isUuid(row.id);
-    case "tasks":
-      return isUuid(row.id) && isUuid(getRowValue(row, "project_id", "projectId"));
-    case "agent-runs":
-      return isUuid(row.id) && isUuid(getRowValue(row, "task_id", "taskId"));
-    case "model-runs":
-      return (
-        isUuid(row.id) &&
-        isUuid(getRowValue(row, "task_id", "taskId")) &&
-        isUuid(getRowValue(row, "agent_run_id", "agentRunId"))
-      );
-    case "task-logs":
-      return isUuid(row.id) && isUuid(getRowValue(row, "task_id", "taskId"));
-    case "quality-reviews":
-      return isUuid(row.id) && isUuid(getRowValue(row, "task_id", "taskId"));
-    case "approvals":
-      return isUuid(row.id) && isUuid(getRowValue(row, "task_id", "taskId"));
-    default:
-      return true;
-  }
-}
-
-function filterSyncableRows(name: CollectionName, rows: AnyRow[]) {
-  return rows.filter((row) => shouldSyncRow(name, row));
-}
-
-async function filterSyncableRowsForCloud(name: CollectionName, rows: AnyRow[]): Promise<AnyRow[]> {
-  const basicRows = filterSyncableRows(name, rows);
-
-  switch (name) {
-    case "agent-runs":
-    case "task-logs":
-    case "quality-reviews":
-    case "approvals": {
-      const syncableTasks = filterSyncableRows("tasks", await readLocalCollection<AnyRow>("tasks"));
-      const taskIds = new Set(syncableTasks.map((row) => String(row.id)));
-      return basicRows.filter((row) => taskIds.has(String(getRowValue(row, "task_id", "taskId") ?? "")));
-    }
-    case "model-runs": {
-      const syncableTasks = filterSyncableRows("tasks", await readLocalCollection<AnyRow>("tasks"));
-      const syncableAgentRuns = await filterSyncableRowsForCloud("agent-runs", await readLocalCollection<AnyRow>("agent-runs"));
-      const taskIds = new Set(syncableTasks.map((row) => String(row.id)));
-      const agentRunIds = new Set(syncableAgentRuns.map((row) => String(row.id)));
-      return basicRows.filter((row) => {
-        const taskId = String(getRowValue(row, "task_id", "taskId") ?? "");
-        const agentRunId = String(getRowValue(row, "agent_run_id", "agentRunId") ?? "");
-        return taskIds.has(taskId) && agentRunIds.has(agentRunId);
-      });
-    }
-    default:
-      return basicRows;
-  }
-}
-
-function mergeById<T extends { id: string }>(cloudRows: T[], localRows: T[]) {
-  const localById = new Map(localRows.map((row) => [row.id, row]));
-  const merged = cloudRows.map((row) => ({ ...row, ...(localById.get(row.id) ?? {}) }));
-  const seen = new Set(merged.map((row) => row.id));
-  for (const row of localRows) {
-    if (!seen.has(row.id)) {
-      merged.push(row);
-    }
-  }
-  return merged;
 }
 
 function stripUndefined<T extends Record<string, unknown>>(value: T) {
@@ -626,6 +549,7 @@ function toCloudRow(name: CollectionName, row: AnyRow): AnyRow {
         status: base.status ?? "todo",
         board_status: base.board_status ?? base.boardStatus ?? base.status ?? "todo",
         approval_status: base.approval_status ?? base.approvalStatus ?? "not_required",
+        approval_level: base.approval_level ?? base.approvalLevel ?? "L0",
         approval_required: Boolean(base.approval_required ?? base.approvalRequired ?? false),
         review_status: base.review_status ?? base.reviewStatus ?? "not_required",
         input_requirements: base.input_requirements ?? base.inputRequirements ?? null,
@@ -710,6 +634,8 @@ function toCloudRow(name: CollectionName, row: AnyRow): AnyRow {
         id: base.id,
         owner_id: base.owner_id,
         task_id: base.task_id ?? base.taskId ?? null,
+        subject_type: base.subject_type ?? base.subjectType ?? "task",
+        subject_id: base.subject_id ?? base.subjectId ?? base.task_id ?? base.taskId ?? null,
         requested_by_agent_id: safeRequestedById,
         status: base.status ?? "pending",
         reason: base.reason ?? base.decision_note ?? "Workflow approval record",
@@ -733,6 +659,7 @@ function toCloudRow(name: CollectionName, row: AnyRow): AnyRow {
         required_tools: base.required_tools ?? base.requiredTools ?? [],
         required_memory_types: base.required_memory_types ?? base.requiredMemoryTypes ?? [],
         approval_required: Boolean(base.approval_required ?? base.approvalRequired ?? false),
+        approval_level: base.approval_level ?? base.approvalLevel ?? "L0",
         source: base.source ?? "custom",
         source_url: base.source_url ?? base.sourceUrl ?? null,
         license: base.license ?? null,
@@ -817,6 +744,7 @@ function toCloudRow(name: CollectionName, row: AnyRow): AnyRow {
         wins: base.wins ?? [],
         risks: base.risks ?? [],
         next_actions: base.next_actions ?? base.nextActions ?? [],
+        content_metrics: base.content_metrics ?? base.contentMetrics ?? {},
         created_at: base.created_at ?? base.createdAt ?? new Date().toISOString()
       });
     default:
@@ -871,8 +799,8 @@ async function upsertSupabaseRows(name: CollectionName, rows: AnyRow[]) {
 }
 
 async function replaceSupabaseCollection(name: CollectionName, rows: AnyRow[]) {
-  if (!isCloudBacked(name)) return;
-  const syncableRows = await filterSyncableRowsForCloud(name, rows);
+  requireCloudBacked(name);
+  const syncableRows = rows;
   await deleteSupabaseRowsMissing(
     name,
     syncableRows.map((row) => String(row.id))
@@ -882,75 +810,33 @@ async function replaceSupabaseCollection(name: CollectionName, rows: AnyRow[]) {
   }
 }
 
-async function seedSupabaseFromLocal() {
-  if (!getSupabase() || !getOwnerId()) return;
-
-  for (const name of cloudSeedOrder) {
-    const remoteRows = await readSupabaseRows(name);
-    if (remoteRows.length) continue;
-    const localRows = await readLocalCollection<AnyRow>(name);
-    const syncableRows = await filterSyncableRowsForCloud(name, localRows);
-    if (!syncableRows.length) continue;
-    await upsertSupabaseRows(name, syncableRows);
-  }
-}
-
-async function ensureCloudSeeded() {
-  if (!getSupabase() || !getOwnerId()) return;
-  if (!cloudSeedPromise) {
-    cloudSeedPromise = seedSupabaseFromLocal().catch((error) => {
-      cloudSeedPromise = null;
-      throw error;
-    });
-  }
-  await cloudSeedPromise;
-}
-
 export async function readCollection<T>(name: CollectionName): Promise<T[]> {
-  const localRows = await readLocalCollection<T>(name);
-  if (!isCloudBacked(name)) {
-    return localRows;
-  }
+  if (isLocalStoreEnabled()) return readLocalCollection<T>(name);
 
-  try {
-    await ensureCloudSeeded();
-    const cloudRows = (await readSupabaseRows(name)) as T[];
-    const syncableLocalRows = (await filterSyncableRowsForCloud(name, localRows as AnyRow[])) as T[];
-    return mergeById(cloudRows as Array<{ id: string }>, syncableLocalRows as Array<{ id: string }>) as T[];
-  } catch (error) {
-    markCloudUnavailable();
-    console.warn(`[local-store] Supabase read failed for ${name}; using local data only.`, error);
-    return localRows;
-  }
+  requireCloudBacked(name);
+  return (await readSupabaseRows(name)) as T[];
 }
 
 export async function writeCollection<T>(name: CollectionName, data: T[]) {
-  await writeLocalCollection(name, data);
-  if (isCloudBacked(name)) {
-    try {
-      await ensureCloudSeeded();
-      await replaceSupabaseCollection(name, data as AnyRow[]);
-    } catch (error) {
-      markCloudUnavailable();
-      console.warn(`[local-store] Supabase write failed for ${name}; local data was saved.`, error);
-    }
+  if (isLocalStoreEnabled()) {
+    await writeLocalCollection(name, data);
+    return;
   }
+
+  requireCloudBacked(name);
+  await replaceSupabaseCollection(name, data as AnyRow[]);
 }
 
 export async function appendCollectionItem<T extends { id: string }>(name: CollectionName, item: T) {
-  const rows = await readLocalCollection<T>(name);
-  rows.unshift(item);
-  await writeLocalCollection(name, rows);
-
-  if (isCloudBacked(name) && shouldSyncRow(name, item as AnyRow)) {
-    try {
-      await ensureCloudSeeded();
-      await upsertSupabaseRows(name, [item as AnyRow]);
-    } catch (error) {
-      markCloudUnavailable();
-      console.warn(`[local-store] Supabase append failed for ${name}; local data was saved.`, error);
-    }
+  if (isLocalStoreEnabled()) {
+    const rows = await readLocalCollection<T>(name);
+    rows.unshift(item);
+    await writeLocalCollection(name, rows);
+    return item;
   }
+
+  requireCloudBacked(name);
+  await upsertSupabaseRows(name, [item as AnyRow]);
   return item;
 }
 
@@ -959,22 +845,22 @@ export async function patchCollectionItem<T extends { id: string }>(
   id: string,
   patch: Partial<T>
 ) {
-  const rows = await readLocalCollection<T>(name);
+  let rows: T[];
+  if (isLocalStoreEnabled()) {
+    rows = await readLocalCollection<T>(name);
+  } else {
+    requireCloudBacked(name);
+    rows = (await readSupabaseRows(name)) as T[];
+  }
   const index = rows.findIndex((row) => row.id === id);
   if (index === -1) return null;
 
   const next = { ...rows[index], ...patch } as T;
-  rows[index] = next;
-  await writeLocalCollection(name, rows);
-
-  if (isCloudBacked(name) && shouldSyncRow(name, next as AnyRow)) {
-    try {
-      await ensureCloudSeeded();
-      await upsertSupabaseRows(name, [next as AnyRow]);
-    } catch (error) {
-      markCloudUnavailable();
-      console.warn(`[local-store] Supabase patch failed for ${name}; local data was saved.`, error);
-    }
+  if (isLocalStoreEnabled()) {
+    rows[index] = next;
+    await writeLocalCollection(name, rows);
+  } else {
+    await upsertSupabaseRows(name, [next as AnyRow]);
   }
   return next;
 }
@@ -985,23 +871,24 @@ export async function upsertByField<T extends Record<string, unknown>>(
   value: unknown,
   record: T
 ) {
-  const rows = await readLocalCollection<T>(name);
+  let rows: T[];
+  if (isLocalStoreEnabled()) {
+    rows = await readLocalCollection<T>(name);
+  } else {
+    requireCloudBacked(name);
+    rows = (await readSupabaseRows(name)) as T[];
+  }
   const index = rows.findIndex((row) => row[field] === value);
   if (index === -1) {
     rows.unshift(record);
   } else {
     rows[index] = { ...rows[index], ...record };
   }
-  await writeLocalCollection(name, rows);
-
-  if (isCloudBacked(name)) {
-    try {
-      await ensureCloudSeeded();
-      await replaceSupabaseCollection(name, rows as AnyRow[]);
-    } catch (error) {
-      markCloudUnavailable();
-      console.warn(`[local-store] Supabase upsert failed for ${name}; local data was saved.`, error);
-    }
+  const saved = rows[index === -1 ? 0 : index];
+  if (isLocalStoreEnabled()) {
+    await writeLocalCollection(name, rows);
+  } else {
+    await upsertSupabaseRows(name, [saved as AnyRow]);
   }
-  return record;
+  return saved;
 }

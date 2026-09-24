@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { assertTaskExecutionAllowed, classifyApproval, classifyTaskApproval, taskApprovalState } from "@/lib/approval-policy";
 import { getDefaultModelPolicies } from "@/lib/llm/catalog";
 import { appendCollectionItem, patchCollectionItem, readCollection, writeCollection } from "@/lib/local-store";
 import { resolveModelPolicy, runLLM } from "@/lib/llm/router";
@@ -90,6 +91,13 @@ type ReviewStepResult = {
   checklist: Array<{ label: string; passed: boolean }>;
   notes: string;
   review: AnyRow;
+};
+
+export type MeetingRunResult = {
+  topic: string;
+  messages: Array<{ agentId: string; speaker: string; content: string }>;
+  conclusion: string;
+  actionItems: string[];
 };
 
 const MAX_AUTO_REVIEW_ATTEMPTS = 2;
@@ -206,7 +214,11 @@ export async function createTasksForProject(input: {
     const selectedSkillRows = skills.filter((skill) => draft.suggested_skills.includes(skill.slug));
     const now = new Date().toISOString();
     const requestedStatus = normalizeTaskStatus(draft.status);
-    const initialStatus = requestedStatus === "waiting_boss_approval" ? "todo" : requestedStatus;
+    const approvalDecision = classifyTaskApproval(draft as AnyRow, selectedSkillRows);
+    const approvalState = taskApprovalState(approvalDecision);
+    const initialStatus = approvalDecision.level === "L0" || approvalDecision.level === "L1"
+      ? requestedStatus === "waiting_boss_approval" ? "todo" : requestedStatus
+      : approvalState.status;
     const hasExternalActionSkill = selectedSkillRows.some(isExternalActionSkill);
     const task = {
       id: crypto.randomUUID(),
@@ -222,8 +234,9 @@ export async function createTasksForProject(input: {
       risk_level: draft.risk_level,
       status: initialStatus,
       board_status: initialStatus,
-      approval_status: "not_required",
-      approval_required: false,
+      approval_level: approvalDecision.level,
+      approval_status: approvalState.approval_status,
+      approval_required: approvalState.approval_required,
       review_status: "not_required",
       input_requirements: draft.input_requirements,
       output_requirements: draft.output_requirements,
@@ -235,10 +248,22 @@ export async function createTasksForProject(input: {
     };
 
     await appendCollectionItem("tasks", task);
+    if (approvalDecision.level === "L2" || approvalDecision.level === "L3") {
+      await appendCollectionItem("approvals", {
+        id: crypto.randomUUID(),
+        task_id: task.id,
+        requested_by_agent_id: assignedAgent?.id ?? null,
+        status: approvalDecision.level === "L3" ? "manual_only" : "pending",
+        reason: approvalDecision.reasons.join("；") || `${approvalDecision.level} 动作策略`,
+        decision_note: approvalDecision.level === "L3" ? "L3 动作仅允许主理人人工执行。" : null,
+        decided_at: null,
+        created_at: now
+      });
+    }
     createdTasks.push(task);
     if (assignedAgent?.id) suggestedAgents.add(assignedAgent.id);
-    if (draft.risk_level === "high" || draft.risk_level === "critical" || hasExternalActionSkill) {
-      risks.add(`${task.title} is high-risk; the system will still execute automatically and keep external actions in suggestion mode.`);
+    if (approvalDecision.level !== "L0" || hasExternalActionSkill) {
+      risks.add(`${task.title} classified as ${approvalDecision.level}: ${approvalDecision.reasons.join("；")}`);
     }
 
     await appendProjectLog({
@@ -275,6 +300,77 @@ export async function createTasksForProject(input: {
   };
 }
 
+export async function runMeeting(input: {
+  topic: string;
+  participantAgentIds: string[];
+  hostAgentId?: string | null;
+}): Promise<MeetingRunResult> {
+  const agents = await readCollection<AnyRow>("agents");
+  const participants = input.participantAgentIds
+    .map((id) => agents.find((agent) => agent.id === id))
+    .filter(Boolean) as AnyRow[];
+  if (!participants.length) throw new Error("No database-backed participants were found for this meeting.");
+
+  const host = agents.find((agent) => agent.id === input.hostAgentId) ?? participants[0];
+  const fallbackMessages = participants.map((agent) => ({
+    agentId: String(agent.id),
+    speaker: `${agent.name}（${agent.title ?? agent.department ?? "Agent"}）`,
+    content: fallbackMeetingContribution(agent, input.topic)
+  }));
+  const fallback: MeetingRunResult = {
+    topic: input.topic,
+    messages: fallbackMessages,
+    conclusion: `围绕“${input.topic}”，先推进低风险且可验收的事项；涉及发布、资金或外部承诺的动作必须遵守 L0–L3 审批策略。`,
+    actionItems: ["明确负责人和验收标准", "将结论拆成数据库任务", "需要审批的动作进入主理人收件箱"]
+  };
+
+  const llmResult = await runLLM({
+    responseFormat: "json_object",
+    metadata: {
+      meeting_topic: input.topic,
+      host_agent_id: host?.id ?? null,
+      participant_agent_ids: participants.map((agent) => agent.id)
+    },
+    messages: [
+      {
+        role: "system",
+        content:
+          '你是 AI 公司会议主持人。根据数据库中的岗位信息，让每位参会 Agent 只从自己的岗位职责发言，最后形成结论和待办。不得执行外部动作。只输出 JSON：{"messages":[{"agent_id":"","content":""}],"conclusion":"","action_items":[""]}'
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          topic: input.topic,
+          host: host ? meetingAgentProfile(host) : null,
+          participants: participants.map(meetingAgentProfile)
+        })
+      }
+    ]
+  });
+  if (llmResult.status === "failed" || !llmResult.content) return fallback;
+
+  try {
+    const parsed = JSON.parse(extractJson(llmResult.content)) as AnyRow;
+    const rawMessages = Array.isArray(parsed.messages) ? parsed.messages : [];
+    const parsedByAgentId = new Map(
+      rawMessages.map((message: AnyRow) => [String(message.agent_id ?? message.agentId ?? ""), String(message.content ?? "")])
+    );
+    return {
+      topic: input.topic,
+      messages: fallbackMessages.map((message) => ({
+        ...message,
+        content: parsedByAgentId.get(message.agentId) || message.content
+      })),
+      conclusion: String(parsed.conclusion ?? fallback.conclusion),
+      actionItems: Array.isArray(parsed.action_items ?? parsed.actionItems)
+        ? (parsed.action_items ?? parsed.actionItems).map(String).filter(Boolean)
+        : fallback.actionItems
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 export async function executeAgentRun(
   taskId: string,
   preferredAgentId?: string | null,
@@ -303,6 +399,7 @@ export async function executeAgentRun(
     (row) => (row.agent_id ?? row.agentId) === assignedAgent.id && row.enabled !== false
   );
   const selectedSkillRows = resolveTaskSkills(task, selectedAssignments, skills);
+  const approvalDecision = assertTaskExecutionAllowed(task, selectedSkillRows);
   const selectedPolicy =
     modelPolicies.find((policy) => policy.name === task.model_policy) ??
     resolveModelPolicy({
@@ -459,7 +556,8 @@ export async function executeAgentRun(
   for (const skill of selectedSkillRows) {
     const review = skillReviews.find((row) => (row.skill_id ?? row.skillId) === skill.id);
     const approved = !skill.approval_required || (review?.review_status ?? review?.reviewStatus) === "approved";
-    const pendingApproval = skill.skill_type === "action" || !approved;
+    const skillDecision = classifyApproval(skill);
+    const pendingApproval = skillDecision.level === "L3" || (skillDecision.level === "L2" && task.approval_status !== "approved") || !approved;
     const skillRun = {
       id: crypto.randomUUID(),
       skill_id: skill.id,
@@ -516,9 +614,10 @@ export async function executeAgentRun(
     outputs: [...(task.outputs ?? []), taskOutput],
     status: nextStatus,
     board_status: nextStatus,
-    approval_status: nextApproval,
+    approval_level: approvalDecision.level,
+    approval_status: approvalDecision.level === "L2" ? "approved" : nextApproval,
     review_status: "pending",
-    approval_required: false,
+    approval_required: approvalDecision.level === "L2",
     used_memory_ids: approvedMemories.map((memory) => memory.id),
     updated_at: finishedAt
   };
@@ -860,8 +959,8 @@ async function finalizeTask(
       status: "done",
       board_status: "done",
       review_status: "approved",
-      approval_status: "not_required",
-      approval_required: false,
+      approval_status: task.approval_status ?? "not_required",
+      approval_required: task.approval_level === "L2" || task.approval_level === "L3",
       updated_at: now
     });
     const deliverables = (await readCollection<AnyRow>("deliverables")).filter((item) => item.task_id === task.id);
@@ -1429,8 +1528,32 @@ function normalizeTaskType(skillSlug?: string) {
   return "general";
 }
 
+function meetingAgentProfile(agent: AnyRow) {
+  return {
+    id: String(agent.id),
+    name: String(agent.name ?? "Agent"),
+    title: String(agent.title ?? ""),
+    department: String(agent.department ?? ""),
+    role: String(agent.agent_role ?? agent.agentRole ?? "worker"),
+    responsibilities: String(agent.prompt ?? "").slice(0, 800),
+    skills: Array.isArray(agent.skills) ? agent.skills : []
+  };
+}
+
+function fallbackMeetingContribution(agent: AnyRow, topic: string) {
+  const role = String(agent.agent_role ?? agent.agentRole ?? "worker");
+  const department = String(agent.department ?? "").toLowerCase();
+  if (role === "reviewer" || department === "finance" || department === "legal") {
+    return `围绕“${topic}”，我会先检查预算、承诺、合规边界和 L0–L3 审批条件，再给出可执行范围。`;
+  }
+  if (role === "leader") {
+    return `围绕“${topic}”，建议先明确目标、验收标准、任务依赖和负责人，再按风险等级安排执行顺序。`;
+  }
+  return `围绕“${topic}”，我会从 ${agent.title ?? agent.department ?? "执行岗位"} 视角拆出交付物、所需输入和下一步动作。`;
+}
+
 function isExternalActionSkill(skill: AnyRow) {
-  return skill.skill_type === "action";
+  return classifyApproval(skill).level !== "L0";
 }
 
 function inferDeliverableType(taskType?: string): DeliverableType {
@@ -1494,6 +1617,7 @@ function normalizeTaskRow(row: AnyRow): Task {
     status: row.status ?? "todo",
     boardStatus: row.board_status ?? row.boardStatus ?? row.status ?? "todo",
     approvalStatus: row.approval_status ?? row.approvalStatus ?? "not_required",
+    approvalLevel: row.approval_level ?? row.approvalLevel ?? "L0",
     approvalRequired: Boolean(row.approval_required ?? row.approvalRequired ?? false),
     reviewStatus: row.review_status ?? row.reviewStatus ?? "not_required",
     modelPolicy: row.model_policy ?? row.modelPolicy ?? null,

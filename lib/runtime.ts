@@ -3,12 +3,12 @@ export function isSupabaseConfigured() {
 }
 
 export function isDemoDataEnabled() {
-  return process.env.NEXT_PUBLIC_ALLOW_DEMO_DATA === "true" || process.env.ALLOW_DEMO_DATA === "true";
+  return process.env.USE_LOCAL_STORE === "true";
 }
 
 export function getRuntimeMode() {
-  if (isSupabaseConfigured()) return "database";
   if (isDemoDataEnabled()) return "demo";
+  if (isSupabaseConfigured()) return "database";
   return "setup_required";
 }
 
@@ -16,6 +16,6 @@ export function setupRequiredPayload(resource: string) {
   return {
     resource,
     mode: "setup_required",
-    message: "Supabase is not configured. Add environment variables or enable NEXT_PUBLIC_ALLOW_DEMO_DATA=true for demo mode."
+    message: "Supabase is not configured. Add environment variables or explicitly set USE_LOCAL_STORE=true for offline development."
   };
 }

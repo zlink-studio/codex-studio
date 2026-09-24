@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ZLink Studio OS — UI Concept</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Noto+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #08090a;
+      --sidebar: #0b0c0e;
+      --panel: #0f1012;
+      --panel-2: #131417;
+      --panel-3: #191a1e;
+      --line: rgba(255,255,255,.075);
+      --line-strong: rgba(255,255,255,.12);
+      --text: #f5f6f7;
+      --text-2: #c8cbd1;
+      --muted: #888d97;
+      --dim: #5f646e;
+      --violet: #7774ff;
+      --violet-soft: rgba(119,116,255,.14);
+      --cream: #e9e5dd;
+      --green: #49c98d;
+      --amber: #e6ad62;
+      --red: #eb7777;
+      --blue: #77a6ff;
+      --radius: 8px;
+      --radius-lg: 16px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
+    body {
+      font-family: Inter, "Noto Sans SC", "PingFang SC", system-ui, sans-serif;
+      font-feature-settings: "cv01", "ss03";
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    .app { min-height: 100vh; background:
+      radial-gradient(900px 520px at 66% -8%, rgba(92,80,200,.11), transparent 58%),
+      var(--bg); }
+    .sidebar {
+      position: fixed; inset: 0 auto 0 0; width: 256px; z-index: 20;
+      display: flex; flex-direction: column; padding: 18px 14px 16px;
+      border-right: 1px solid var(--line); background: rgba(11,12,14,.96);
+    }
+    .brand { display: flex; align-items: center; gap: 11px; padding: 6px 8px 24px; }
+    .brand-mark {
+      width: 31px; height: 31px; display: grid; place-items: center; border-radius: 8px;
+      background: var(--cream); color: #151518; font-size: 12px; font-weight: 600; letter-spacing: -.5px;
+      box-shadow: 0 0 0 1px rgba(255,255,255,.2) inset;
+    }
+    .brand-name { font-size: 13px; font-weight: 600; letter-spacing: -.15px; }
+    .brand-sub { margin-top: 2px; color: var(--dim); font: 10px/1.2 "JetBrains Mono", monospace; letter-spacing: .08em; }
+    .nav-label { margin: 16px 10px 7px; color: #555a64; font-size: 10px; font-weight: 600; letter-spacing: .13em; text-transform: uppercase; }
+    .nav { display: grid; gap: 3px; }
+    .nav-item {
+      width: 100%; min-height: 38px; display: flex; align-items: center; gap: 11px; padding: 0 10px;
+      border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--muted);
+      font-size: 13px; font-weight: 500; text-align: left; cursor: pointer; transition: .18s ease;
+    }
+    .nav-item:hover { background: rgba(255,255,255,.035); color: var(--text-2); }
+    .nav-item.active { color: var(--text); background: rgba(255,255,255,.055); border-color: rgba(255,255,255,.055); }
+    .nav-item.active .nav-icon { color: #aaa8ff; }
+    .nav-icon { width: 17px; height: 17px; color: #656a73; }
+    .nav-badge { margin-left: auto; min-width: 18px; height: 18px; display: grid; place-items: center; border-radius: 5px; background: rgba(255,255,255,.06); color: #a8acb4; font-size: 10px; }
+    .sidebar-foot { margin-top: auto; }
+    .system-card { margin: 8px 2px 12px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.018); }
+    .system-line { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 11px; }
+    .status-live { display: inline-flex; align-items: center; gap: 6px; color: #b4dcc9; }
+    .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; box-shadow: 0 0 12px currentColor; }
+    .system-progress { height: 3px; margin-top: 11px; overflow: hidden; border-radius: 3px; background: rgba(255,255,255,.06); }
+    .system-progress span { display: block; width: 92%; height: 100%; background: linear-gradient(90deg, #5e6ad2, #8c87ff); }
+    .profile { display: flex; align-items: center; gap: 10px; padding: 8px; }
+    .avatar { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 8px; background: #18191d; color: var(--text-2); font-size: 11px; }
+    .profile strong { display: block; font-size: 11px; font-weight: 500; }
+    .profile small { color: var(--dim); font-size: 10px; }
+    .main { margin-left: 256px; min-height: 100vh; }
+    .topbar {
+      height: 58px; display: flex; align-items: center; gap: 16px; padding: 0 26px;
+      border-bottom: 1px solid var(--line); background: rgba(8,9,10,.68); backdrop-filter: blur(18px); position: sticky; top: 0; z-index: 10;
+    }
+    .crumb { color: var(--dim); font-size: 12px; }
+    .crumb span { color: var(--text-2); }
+    .top-spacer { flex: 1; }
+    .search {
+      width: 238px; height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px;
+      border: 1px solid var(--line); border-radius: 7px; background: rgba(255,255,255,.025); color: var(--dim); font-size: 11px;
+    }
+    .key { margin-left: auto; padding: 2px 5px; border: 1px solid var(--line); border-radius: 4px; color: #626771; font: 9px/1.3 monospace; }
+    .top-health { display: flex; align-items: center; gap: 7px; padding: 0 2px; color: #a4aaae; font-size: 11px; }
+    .top-health .dot { color: var(--green); }
+    .icon-button { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 7px; background: rgba(255,255,255,.025); }
+    .primary-button { height: 32px; padding: 0 13px; border: 0; border-radius: 7px; background: var(--cream); color: #222125; font-size: 11px; font-weight: 600; }
+    .screen { display: none; padding: 30px 30px 56px; max-width: 1680px; margin: auto; }
+    .screen.active { display: block; }
+    .page-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 26px; }
+    .eyebrow { margin-bottom: 10px; color: #7774ff; font: 10px/1.3 "JetBrains Mono", monospace; letter-spacing: .11em; text-transform: uppercase; }
+    h1 { margin: 0; font-size: 31px; line-height: 1.05; font-weight: 510; letter-spacing: -.75px; }
+    .page-head p { max-width: 680px; margin: 9px 0 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+    .head-actions { display: flex; gap: 8px; }
+    .button { height: 34px; padding: 0 12px; border: 1px solid var(--line); border-radius: 7px; background: rgba(255,255,255,.025); font-size: 11px; }
+    .button.accent { border-color: rgba(119,116,255,.38); background: var(--violet-soft); color: #cac8ff; }
+    .grid { display: grid; gap: 12px; }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0,1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0,1fr)); }
+    .grid-main { grid-template-columns: minmax(0,1.58fr) minmax(320px,.82fr); }
+    .grid-equal { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .card { position: relative; border: 1px solid var(--line); border-radius: var(--radius-lg); background: rgba(255,255,255,.021); overflow: hidden; }
+    .card::before { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 1px rgba(255,255,255,.026); }
+    .card-pad { padding: 18px; }
+    .card-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+    .card-title h3 { margin: 0; color: #e7e9ec; font-size: 12px; font-weight: 550; letter-spacing: -.1px; }
+    .card-title small { color: var(--dim); font-size: 10px; }
+    .metric { min-height: 116px; padding: 16px; }
+    .metric-top { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font-size: 10px; }
+    .metric-value { margin-top: 19px; font-size: 27px; font-weight: 510; letter-spacing: -1px; }
+    .metric-foot { margin-top: 7px; display: flex; gap: 7px; color: var(--dim); font-size: 10px; }
+    .up { color: #8bd6b4; }
+    .mini-ring { width: 28px; height: 28px; border-radius: 50%; background: conic-gradient(var(--violet) var(--value), #24262b 0); position: relative; }
+    .mini-ring::after { content: ""; position: absolute; inset: 4px; border-radius: 50%; background: #101113; }
+    .client-row { display: grid; grid-template-columns: minmax(150px,1.2fr) .9fr .9fr 90px; align-items: center; gap: 14px; min-height: 59px; padding: 0 4px; border-top: 1px solid var(--line); }
+    .client-row:first-of-type { border-top: 0; }
+    .client-id { display: flex; align-items: center; gap: 11px; }
+    .client-logo { width: 31px; height: 31px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: #18191c; color: var(--text-2); font-size: 11px; font-weight: 600; }
+    .client-id strong { display: block; font-size: 11px; font-weight: 550; }
+    .client-id small { color: var(--dim); font-size: 9px; }
+    .service-tags { display: flex; flex-wrap: wrap; gap: 5px; }
+    .tag { padding: 4px 7px; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,.022); color: #9da1aa; font-size: 9px; }
+    .health { display: inline-flex; align-items: center; gap: 6px; color: #aeb2b9; font-size: 10px; }
+    .health.good .dot { color: var(--green); }
+    .health.warn .dot { color: var(--amber); }
+    .bar { height: 4px; overflow: hidden; border-radius: 4px; background: rgba(255,255,255,.06); }
+    .bar span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #605ed2, #8e88ff); }
+    .bar.green span { background: #45b985; }
+    .percent { margin-top: 6px; color: var(--dim); font-size: 9px; }
+    .approval-item { padding: 14px 0; border-top: 1px solid var(--line); }
+    .approval-item:first-of-type { padding-top: 2px; border-top: 0; }
+    .approval-meta { display: flex; align-items: center; gap: 8px; color: var(--dim); font-size: 9px; }
+    .level { padding: 3px 5px; border-radius: 4px; background: rgba(230,173,98,.12); color: #d5a865; font: 9px/1 monospace; }
+    .approval-item h4 { margin: 8px 0 5px; font-size: 11px; font-weight: 520; }
+    .approval-item p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+    .approval-actions { display: flex; gap: 6px; margin-top: 10px; }
+    .tiny-button { height: 26px; padding: 0 8px; border: 1px solid var(--line); border-radius: 5px; background: rgba(255,255,255,.025); font-size: 9px; }
+    .tiny-button.approve { border-color: rgba(119,116,255,.28); background: rgba(119,116,255,.12); color: #b7b4ff; }
+    .chart { height: 158px; display: flex; align-items: end; gap: 9px; padding: 15px 4px 0; border-bottom: 1px solid var(--line); background: repeating-linear-gradient(to top, transparent 0 39px, rgba(255,255,255,.035) 40px); }
+    .chart-col { flex: 1; display: flex; gap: 3px; align-items: end; height: 100%; }
+    .chart-col i { display: block; width: 50%; border-radius: 3px 3px 0 0; background: #4b4d59; }
+    .chart-col i:last-child { background: #7774ff; opacity: .82; }
+    .chart-labels { display: flex; justify-content: space-between; padding-top: 8px; color: var(--dim); font-size: 8px; }
+    .activity { display: grid; gap: 2px; }
+    .activity-row { display: grid; grid-template-columns: 54px 22px 1fr auto; align-items: center; gap: 10px; min-height: 38px; color: var(--muted); font-size: 9px; }
+    .activity-row .time { color: var(--dim); font-family: monospace; }
+    .activity-avatar { width: 21px; height: 21px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 6px; background: #18191d; color: #aaa; font-size: 8px; }
+    .activity-row strong { color: var(--text-2); font-weight: 500; }
+    .activity-row .done { color: #7ebf9f; }
+    .section-gap { margin-top: 12px; }
+    .client-card { min-height: 214px; padding: 18px; }
+    .client-card-head { display: flex; justify-content: space-between; gap: 12px; }
+    .client-card h3 { margin: 13px 0 4px; font-size: 16px; font-weight: 520; }
+    .client-card p { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.6; }
+    .client-kpis { display: grid; grid-template-columns: repeat(3,1fr); gap: 8px; margin-top: 18px; padding-top: 14px; border-top: 1px solid var(--line); }
+    .client-kpis strong { display: block; font-size: 13px; font-weight: 520; }
+    .client-kpis span { color: var(--dim); font-size: 8px; }
+    .table { width: 100%; border-collapse: collapse; }
+    .table th { padding: 11px 12px; border-bottom: 1px solid var(--line); color: var(--dim); font-size: 8px; font-weight: 500; text-align: left; letter-spacing: .06em; text-transform: uppercase; }
+    .table td { padding: 13px 12px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 9px; }
+    .table tr:last-child td { border-bottom: 0; }
+    .table strong { color: var(--text-2); font-weight: 500; }
+    .hero-client { display: grid; grid-template-columns: 1fr auto; align-items: start; gap: 24px; padding: 22px; }
+    .hero-client-left { display: flex; gap: 16px; }
+    .hero-client .client-logo { width: 46px; height: 46px; font-size: 14px; }
+    .hero-client h2 { margin: 2px 0 7px; font-size: 21px; font-weight: 520; letter-spacing: -.45px; }
+    .hero-client p { margin: 0; color: var(--muted); font-size: 10px; }
+    .hero-score { display: flex; gap: 22px; }
+    .score-block { min-width: 74px; text-align: right; }
+    .score-block strong { display: block; font-size: 20px; font-weight: 510; }
+    .score-block span { color: var(--dim); font-size: 8px; }
+    .service-lane { padding: 16px; border-top: 1px solid var(--line); }
+    .service-lane:first-child { border-top: 0; }
+    .lane-top { display: grid; grid-template-columns: 110px 1fr 105px; align-items: center; gap: 14px; }
+    .lane-name { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 10px; font-weight: 500; }
+    .lane-name b { width: 7px; height: 7px; border-radius: 2px; background: var(--violet); }
+    .lane-next { color: var(--muted); font-size: 9px; }
+    .lane-next span { color: var(--text-2); }
+    .lane-bottom { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin: 13px 0 0 118px; }
+    .lane-stat { padding: 9px; border: 1px solid var(--line); border-radius: 7px; background: rgba(255,255,255,.015); }
+    .lane-stat strong { display: block; font-size: 11px; font-weight: 500; }
+    .lane-stat span { color: var(--dim); font-size: 8px; }
+    .account-manager { text-align: center; padding: 22px 18px; }
+    .manager-orbit { width: 68px; height: 68px; display: grid; place-items: center; margin: 3px auto 14px; border: 1px solid rgba(119,116,255,.23); border-radius: 50%; background: radial-gradient(circle, rgba(119,116,255,.18), transparent 68%); box-shadow: 0 0 55px rgba(119,116,255,.12); }
+    .manager-orbit span { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid var(--line-strong); border-radius: 10px; background: #191a1e; font-size: 12px; }
+    .account-manager h3 { margin: 0; font-size: 12px; font-weight: 520; }
+    .account-manager p { margin: 6px 0 16px; color: var(--muted); font-size: 9px; }
+    .manager-list { display: grid; gap: 8px; text-align: left; }
+    .manager-list div { display: flex; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--line); color: var(--dim); font-size: 8px; }
+    .manager-list strong { color: var(--text-2); font-weight: 500; }
+    .tabs { display: flex; gap: 2px; padding: 4px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.018); width: fit-content; }
+    .tab { padding: 7px 11px; border-radius: 6px; color: var(--muted); font-size: 9px; }
+    .tab.active { background: rgba(255,255,255,.07); color: var(--text); }
+    .pipeline { display: grid; grid-template-columns: repeat(5,1fr); gap: 8px; }
+    .pipeline-col { min-height: 320px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: rgba(255,255,255,.012); }
+    .pipeline-head { display: flex; align-items: center; justify-content: space-between; padding: 4px 3px 10px; color: var(--muted); font-size: 9px; }
+    .pipeline-head span:last-child { color: var(--dim); }
+    .work-card { margin-top: 7px; padding: 11px; border: 1px solid var(--line); border-radius: 8px; background: #131417; }
+    .work-card .work-meta { display: flex; justify-content: space-between; gap: 5px; color: var(--dim); font-size: 8px; }
+    .work-card h4 { margin: 8px 0 6px; color: #d8dade; font-size: 10px; font-weight: 500; line-height: 1.45; }
+    .work-card p { margin: 0; color: var(--dim); font-size: 8px; line-height: 1.5; }
+    .work-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 11px; }
+    .mini-avatars { display: flex; }
+    .mini-avatars i { width: 18px; height: 18px; display: grid; place-items: center; margin-left: -3px; border: 1px solid #292b31; border-radius: 5px; background: #1b1c21; color: #858a94; font-style: normal; font-size: 7px; }
+    .mini-avatars i:first-child { margin-left: 0; }
+    .due { color: #8c919a; font: 8px/1 monospace; }
+    .calendar-shell { display: grid; grid-template-columns: 1fr 260px; gap: 12px; }
+    .week { display: grid; grid-template-columns: 74px repeat(7,1fr); min-height: 590px; }
+    .week > div { border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    .week > div:nth-child(8n) { border-right: 0; }
+    .week-head { min-height: 48px; padding: 10px; color: var(--muted); font-size: 9px; text-align: center; }
+    .week-head strong { display: block; margin-top: 4px; color: var(--text-2); font-size: 11px; font-weight: 500; }
+    .time-cell { min-height: 84px; padding: 10px; color: var(--dim); font: 8px/1 monospace; }
+    .day-cell { position: relative; min-height: 84px; padding: 6px; }
+    .event { padding: 7px; border: 1px solid rgba(119,116,255,.23); border-radius: 6px; background: rgba(119,116,255,.09); color: #c7c5f8; font-size: 8px; line-height: 1.35; }
+    .event.green { border-color: rgba(73,201,141,.2); background: rgba(73,201,141,.08); color: #a8d6c0; }
+    .event.amber { border-color: rgba(230,173,98,.2); background: rgba(230,173,98,.08); color: #d7ba8f; }
+    .event + .event { margin-top: 5px; }
+    .schedule-item { padding: 13px 0; border-top: 1px solid var(--line); }
+    .schedule-item:first-of-type { border-top: 0; }
+    .schedule-time { color: #8d89ff; font: 8px/1 monospace; }
+    .schedule-item h4 { margin: 7px 0 4px; font-size: 10px; font-weight: 500; }
+    .schedule-item p { margin: 0; color: var(--dim); font-size: 8px; line-height: 1.45; }
+    .inbox-layout { display: grid; grid-template-columns: minmax(0,1.45fr) minmax(300px,.55fr); gap: 12px; }
+    .inbox-item { display: grid; grid-template-columns: 28px 1fr auto; gap: 12px; padding: 15px 16px; border-top: 1px solid var(--line); }
+    .inbox-item:first-child { border-top: 0; }
+    .select-box { width: 17px; height: 17px; margin-top: 2px; border: 1px solid var(--line-strong); border-radius: 5px; }
+    .inbox-title { display: flex; align-items: center; gap: 7px; }
+    .inbox-title strong { font-size: 11px; font-weight: 520; }
+    .inbox-main p { margin: 7px 0 8px; color: var(--muted); font-size: 9px; line-height: 1.6; }
+    .inbox-facts { display: flex; flex-wrap: wrap; gap: 12px; color: var(--dim); font-size: 8px; }
+    .inbox-side { min-width: 116px; text-align: right; }
+    .inbox-side .time { color: var(--dim); font-size: 8px; }
+    .policy { padding: 16px; }
+    .policy-row { padding: 12px 0; border-top: 1px solid var(--line); }
+    .policy-row:first-of-type { border-top: 0; }
+    .policy-row strong { display: block; font-size: 10px; font-weight: 500; }
+    .policy-row p { margin: 6px 0 0; color: var(--dim); font-size: 8px; line-height: 1.5; }
+    .agent-group { padding: 16px; }
+    .agent-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; }
+    .agent-card { min-height: 128px; padding: 13px; border: 1px solid var(--line); border-radius: 9px; background: rgba(255,255,255,.015); }
+    .agent-head { display: flex; align-items: center; justify-content: space-between; }
+    .agent-face { width: 30px; height: 30px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: #1a1b1f; color: #b9bbc1; font-size: 9px; }
+    .agent-card h4 { margin: 12px 0 3px; font-size: 10px; font-weight: 520; }
+    .agent-card p { margin: 0; color: var(--dim); font-size: 8px; }
+    .agent-load { margin-top: 13px; }
+    .agent-load-top { display: flex; justify-content: space-between; margin-bottom: 6px; color: var(--dim); font-size: 7px; }
+    .run-row { display: grid; grid-template-columns: 42px 1fr 90px 64px; align-items: center; gap: 10px; min-height: 43px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8px; }
+    .run-row:first-of-type { border-top: 0; }
+    .run-row strong { color: var(--text-2); font-weight: 500; }
+    .run-status { color: #8fd0af; }
+    @media (max-width: 1100px) {
+      .sidebar { width: 220px; } .main { margin-left: 220px; }
+      .grid-4 { grid-template-columns: repeat(2,1fr); }
+      .grid-3, .pipeline { grid-template-columns: repeat(2,1fr); }
+      .grid-main, .calendar-shell, .inbox-layout { grid-template-columns: 1fr; }
+      .agent-grid { grid-template-columns: repeat(2,1fr); }
+    }
+  </style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <symbol id="i-today" viewBox="0 0 24 24"><path d="M4 4h6v6H4zM14 4h6v10h-6zM4 14h6v6H4zM14 18h6v2h-6z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+  <symbol id="i-clients" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M3.5 19c.4-4 2.2-6 5.5-6s5.1 2 5.5 6M16 6.5c2.5.3 3.5 1.8 3.5 3.5s-1.2 3.2-3.5 3.5M16.5 15c2.7.4 4 1.8 4 4" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 3 3 8l9 5 9-5-9-5ZM3 12l9 5 9-5M3 16l9 5 9-5" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+  <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="16" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M7 3v4M17 3v4M3 10h18" stroke="currentColor" stroke-width="1.5"/></symbol>
+  <symbol id="i-inbox" viewBox="0 0 24 24"><path d="M4 4h16v15H4zM4 14h4l2 3h4l2-3h4" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+  <symbol id="i-bot" viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="14" rx="3" fill="none" stroke="currentColor" stroke-width="1.5"/><path d="M12 3v3M8 12h.01M16 12h.01M8 16h8" stroke="currentColor" stroke-width="1.5"/></symbol>
+  <symbol id="i-brain" viewBox="0 0 24 24"><path d="M9 4a3 3 0 0 0-3 3 3.5 3.5 0 0 0-1 6.8A3.5 3.5 0 0 0 9 19h1V5A3 3 0 0 0 9 4ZM15 4a3 3 0 0 1 3 3 3.5 3.5 0 0 1 1 6.8A3.5 3.5 0 0 1 15 19h-1V5a3 3 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M8 3v5M16 3v5M6 8h12v3a6 6 0 0 1-12 0V8ZM12 17v4" fill="none" stroke="currentColor" stroke-width="1.5"/></symbol>
+</svg>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">ZL</div><div><div class="brand-name">ZLink Studio</div><div class="brand-sub">OPERATING SYSTEM</div></div></div>
+    <div class="nav-label">Focus</div>
+    <nav class="nav">
+      <button class="nav-item" data-screen="today"><svg class="nav-icon"><use href="#i-today"/></svg>今日驾驶舱</button>
+      <button class="nav-item" data-screen="clients"><svg class="nav-icon"><use href="#i-clients"/></svg>客户中心<span class="nav-badge">3</span></button>
+      <button class="nav-item" data-screen="operations"><svg class="nav-icon"><use href="#i-layers"/></svg>服务运营</button>
+      <button class="nav-item" data-screen="calendar"><svg class="nav-icon"><use href="#i-calendar"/></svg>运营日历</button>
+      <button class="nav-item" data-screen="inbox"><svg class="nav-icon"><use href="#i-inbox"/></svg>老板收件箱<span class="nav-badge">4</span></button>
+    </nav>
+    <div class="nav-label">Intelligence</div>
+    <nav class="nav">
+      <button class="nav-item" data-screen="agents"><svg class="nav-icon"><use href="#i-bot"/></svg>Agent 团队</button>
+      <button class="nav-item"><svg class="nav-icon"><use href="#i-brain"/></svg>公司大脑</button>
+      <button class="nav-item"><svg class="nav-icon"><use href="#i-plug"/></svg>连接与凭据</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="system-card"><div class="system-line"><span>自动化运行率</span><span class="status-live"><i class="dot"></i>92%</span></div><div class="system-progress"><span></span></div></div>
+      <div class="profile"><div class="avatar">H</div><div><strong>Hao · 主理人</strong><small>Owner mode</small></div></div>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar"><div class="crumb">ZLink Studio / <span id="crumb-title">今日驾驶舱</span></div><div class="top-spacer"></div><div class="search">搜索客户、任务或指令 <span class="key">⌘ K</span></div><div class="top-health"><i class="dot"></i>全部系统在线</div><button class="icon-button">＋</button><button class="primary-button">发布目标</button></header>
+
+    <section class="screen" id="today">
+      <div class="page-head"><div><div class="eyebrow">Friday · 17 July</div><h1>今天，一切都在运行。</h1><p>3 个业务主体、8 项服务正在自动推进。你只需要处理 4 个决策，其余工作由系统继续执行。</p></div><div class="head-actions"><button class="button">查看日报</button><button class="button accent">进入指挥中心</button></div></div>
+      <div class="grid grid-4">
+        <div class="card metric"><div class="metric-top"><span>自动完成率</span><div class="mini-ring" style="--value:92%"></div></div><div class="metric-value">92.4%</div><div class="metric-foot"><span class="up">↑ 4.8%</span><span>过去 28 天</span></div></div>
+        <div class="card metric"><div class="metric-top"><span>客户 SLA</span><div class="mini-ring" style="--value:96%"></div></div><div class="metric-value">96.0%</div><div class="metric-foot"><span class="up">全部达标</span><span>1 项临近截止</span></div></div>
+        <div class="card metric"><div class="metric-top"><span>今日人工介入</span><span>目标 &lt; 30m</span></div><div class="metric-value">24 min</div><div class="metric-foot"><span class="up">-12 min</span><span>较上周均值</span></div></div>
+        <div class="card metric"><div class="metric-top"><span>本月交付</span><span>44 / 52</span></div><div class="metric-value">84.6%</div><div class="metric-foot"><span>预计按时完成</span><span class="up">+6.2%</span></div></div>
+      </div>
+      <div class="grid grid-main section-gap">
+        <div class="card card-pad"><div class="card-title"><h3>客户运营脉搏</h3><small>最后同步 2 分钟前</small></div>
+          <div class="client-row"><div class="client-id"><div class="client-logo">A</div><div><strong>A 客户</strong><small>重点综合运营</small></div></div><div class="service-tags"><span class="tag">社媒</span><span class="tag">SEO</span><span class="tag">广告</span></div><div><div class="bar"><span style="width:82%"></span></div><div class="percent">本月交付 82%</div></div><span class="health warn"><i class="dot"></i>需要关注</span></div>
+          <div class="client-row"><div class="client-id"><div class="client-logo">B</div><div><strong>B 客户</strong><small>建站与 SEO</small></div></div><div class="service-tags"><span class="tag">建站</span><span class="tag">SEO</span></div><div><div class="bar green"><span style="width:91%"></span></div><div class="percent">项目进度 91%</div></div><span class="health good"><i class="dot"></i>进展顺利</span></div>
+          <div class="client-row"><div class="client-id"><div class="client-logo">ZL</div><div><strong>ZLink 自营</strong><small>品牌增长系统</small></div></div><div class="service-tags"><span class="tag">国内社媒</span><span class="tag">海外社媒</span><span class="tag">官网</span></div><div><div class="bar green"><span style="width:94%"></span></div><div class="percent">本周执行 94%</div></div><span class="health good"><i class="dot"></i>自动运行</span></div>
+        </div>
+        <div class="card card-pad"><div class="card-title"><h3>只需要你决定</h3><small>4 项</small></div>
+          <div class="approval-item"><div class="approval-meta"><span class="level">L2</span><span>A 客户 · 内容日历</span><span>12 min</span></div><h4>批准下周 7 条社媒内容计划</h4><p>全部通过品牌质检，预计覆盖 3 个平台。</p><div class="approval-actions"><button class="tiny-button approve">批准整批</button><button class="tiny-button">查看详情</button></div></div>
+          <div class="approval-item"><div class="approval-meta"><span class="level">L2</span><span>A 客户 · Meta Ads</span></div><h4>测试系列预算从 ¥300 调整至 ¥420</h4><p>过去 7 天 CPA 低于目标 18%，符合放量候选规则。</p></div>
+          <div class="approval-item"><div class="approval-meta"><span class="level">QA</span><span>B 客户 · 网站</span></div><h4>官网进入上线前最终预览</h4></div>
+        </div>
+      </div>
+      <div class="grid grid-equal section-gap">
+        <div class="card card-pad"><div class="card-title"><h3>执行吞吐</h3><small>计划与实际 · 近 7 天</small></div><div class="chart">
+          <div class="chart-col"><i style="height:42%"></i><i style="height:51%"></i></div><div class="chart-col"><i style="height:61%"></i><i style="height:67%"></i></div><div class="chart-col"><i style="height:55%"></i><i style="height:73%"></i></div><div class="chart-col"><i style="height:78%"></i><i style="height:83%"></i></div><div class="chart-col"><i style="height:64%"></i><i style="height:70%"></i></div><div class="chart-col"><i style="height:88%"></i><i style="height:93%"></i></div><div class="chart-col"><i style="height:72%"></i><i style="height:81%"></i></div>
+        </div><div class="chart-labels"><span>周六</span><span>周日</span><span>周一</span><span>周二</span><span>周三</span><span>周四</span><span>今天</span></div></div>
+        <div class="card card-pad"><div class="card-title"><h3>实时执行</h3><small>7 个 Agent 在线</small></div><div class="activity">
+          <div class="activity-row"><span class="time">15:42</span><span class="activity-avatar">Li</span><span><strong>Lili</strong> 完成 A 客户下周选题初稿</span><span class="done">已质检</span></div>
+          <div class="activity-row"><span class="time">15:36</span><span class="activity-avatar">Ni</span><span><strong>Nini</strong> 发布 ZLink LinkedIn 内容</span><span class="done">成功</span></div>
+          <div class="activity-row"><span class="time">15:18</span><span class="activity-avatar">Mo</span><span><strong>Momo</strong> 关闭 B 客户移动端 QA 问题</span><span class="done">已完成</span></div>
+          <div class="activity-row"><span class="time">14:55</span><span class="activity-avatar">Ki</span><span><strong>Kiki</strong> 重新安排 2 项临近 SLA 工作</span><span>运行中</span></div>
+        </div></div>
+      </div>
+    </section>
+
+    <section class="screen" id="clients">
+      <div class="page-head"><div><div class="eyebrow">Client Operations</div><h1>客户中心</h1><p>客户不是项目标签，而是长期运营主体。服务、账号、承诺、记忆和 KPI 都从这里开始。</p></div><div class="head-actions"><button class="button">服务目录</button><button class="primary-button">＋ 新客户</button></div></div>
+      <div class="grid grid-3">
+        <div class="card client-card" data-open-detail><div class="client-card-head"><div class="client-logo">A</div><span class="health warn"><i class="dot"></i>关注</span></div><h3>A 客户</h3><p>工业设备出海品牌 · 战略综合客户</p><div class="service-tags" style="margin-top:12px"><span class="tag">社媒代运营</span><span class="tag">SEO</span><span class="tag">广告投放</span></div><div class="client-kpis"><div><strong>82%</strong><span>月度交付</span></div><div><strong>3</strong><span>待审批</span></div><div><strong>¥18.4k</strong><span>本月广告</span></div></div></div>
+        <div class="card client-card"><div class="client-card-head"><div class="client-logo">B</div><span class="health good"><i class="dot"></i>健康</span></div><h3>B 客户</h3><p>B2B 服务品牌 · 项目与长期运营</p><div class="service-tags" style="margin-top:12px"><span class="tag">网站建设</span><span class="tag">SEO 代运营</span></div><div class="client-kpis"><div><strong>91%</strong><span>建站进度</span></div><div><strong>6/8</strong><span>页面完成</span></div><div><strong>+21%</strong><span>自然流量</span></div></div></div>
+        <div class="card client-card"><div class="client-card-head"><div class="client-logo">ZL</div><span class="health good"><i class="dot"></i>自动运行</span></div><h3>ZLink Studio</h3><p>内部品牌 · 自有增长系统</p><div class="service-tags" style="margin-top:12px"><span class="tag">国内社媒</span><span class="tag">海外社媒</span><span class="tag">官网维护</span></div><div class="client-kpis"><div><strong>16</strong><span>本月发布</span></div><div><strong>9</strong><span>新增线索</span></div><div><strong>24m</strong><span>日均介入</span></div></div></div>
+      </div>
+      <div class="grid grid-main section-gap">
+        <div class="card card-pad"><div class="card-title"><h3>未来 14 天交付</h3><small>按风险排序</small></div><table class="table"><thead><tr><th>客户 / 交付物</th><th>服务</th><th>负责人</th><th>截止</th><th>状态</th></tr></thead><tbody>
+          <tr><td><strong>A 客户 · 8 月内容日历</strong></td><td>社媒代运营</td><td>客户经理 Agent</td><td>7 月 19 日</td><td><span class="health warn"><i class="dot"></i>待审批</span></td></tr>
+          <tr><td><strong>B 客户 · 官网正式上线</strong></td><td>网站建设</td><td>交付运营 Agent</td><td>7 月 21 日</td><td><span class="health good"><i class="dot"></i>QA</span></td></tr>
+          <tr><td><strong>A 客户 · SEO 月报</strong></td><td>SEO 代运营</td><td>数据报告 Agent</td><td>7 月 28 日</td><td>自动生成中</td></tr>
+          <tr><td><strong>ZLink · 案例页更新</strong></td><td>网站维护</td><td>建站 Agent</td><td>7 月 29 日</td><td>已排期</td></tr>
+        </tbody></table></div>
+        <div class="card card-pad"><div class="card-title"><h3>服务组合</h3><small>8 项活跃</small></div><div class="chart" style="height:144px"><div class="chart-col"><i style="height:82%;width:100%;background:#7774ff"></i></div><div class="chart-col"><i style="height:65%;width:100%;background:#5f6170"></i></div><div class="chart-col"><i style="height:48%;width:100%;background:#4a4c57"></i></div><div class="chart-col"><i style="height:34%;width:100%;background:#3d3f47"></i></div><div class="chart-col"><i style="height:30%;width:100%;background:#34363c"></i></div></div><div class="chart-labels"><span>社媒</span><span>SEO</span><span>建站</span><span>广告</span><span>维护</span></div></div>
+      </div>
+    </section>
+
+    <section class="screen" id="client-detail">
+      <div class="page-head"><div><div class="eyebrow">Clients / A 客户</div><h1>A 客户运营空间</h1><p>所有专业 Agent 共享同一客户上下文，但记忆、凭据和执行记录与其他客户严格隔离。</p></div><div class="head-actions"><button class="button">客户预览</button><button class="button">编辑服务</button><button class="primary-button">发布客户目标</button></div></div>
+      <div class="card hero-client"><div class="hero-client-left"><div class="client-logo">A</div><div><h2>A 客户</h2><p>工业设备出海品牌 · Strategic · 合作第 187 天</p><div class="service-tags" style="margin-top:12px"><span class="tag">社媒代运营</span><span class="tag">SEO</span><span class="tag">Meta Ads</span></div></div></div><div class="hero-score"><div class="score-block"><strong>82%</strong><span>本月交付</span></div><div class="score-block"><strong>94</strong><span>客户健康分</span></div><div class="score-block"><strong>1</strong><span>SLA 风险</span></div></div></div>
+      <div class="grid grid-main section-gap">
+        <div class="card"><div class="card-pad card-title"><h3>活跃服务</h3><small>3 项 · 本周期 7/1—7/31</small></div>
+          <div class="service-lane"><div class="lane-top"><div class="lane-name"><b></b>社媒代运营</div><div><div class="bar"><span style="width:78%"></span></div><div class="percent">14 / 18 条已交付</div></div><div class="lane-next">下一步<br><span>内容日历审批</span></div></div><div class="lane-bottom"><div class="lane-stat"><strong>14</strong><span>已发布</span></div><div class="lane-stat"><strong>5.8%</strong><span>平均互动</span></div><div class="lane-stat"><strong>3</strong><span>新增线索</span></div><div class="lane-stat"><strong>96%</strong><span>质检通过</span></div></div></div>
+          <div class="service-lane"><div class="lane-top"><div class="lane-name"><b style="background:#49c98d"></b>SEO 代运营</div><div><div class="bar green"><span style="width:86%"></span></div><div class="percent">6 / 7 个本月交付</div></div><div class="lane-next">下一步<br><span>发布技术审计</span></div></div><div class="lane-bottom"><div class="lane-stat"><strong>42</strong><span>追踪词</span></div><div class="lane-stat"><strong>+18%</strong><span>自然流量</span></div><div class="lane-stat"><strong>8</strong><span>Top 10</span></div><div class="lane-stat"><strong>91%</strong><span>收录率</span></div></div></div>
+          <div class="service-lane"><div class="lane-top"><div class="lane-name"><b style="background:#e6ad62"></b>广告投放</div><div><div class="bar"><span style="width:66%;background:#c98e58"></span></div><div class="percent">预算周期已执行 66%</div></div><div class="lane-next">下一步<br><span>放量审批</span></div></div><div class="lane-bottom"><div class="lane-stat"><strong>¥18.4k</strong><span>本月消耗</span></div><div class="lane-stat"><strong>2.8x</strong><span>ROAS</span></div><div class="lane-stat"><strong>¥128</strong><span>CPA</span></div><div class="lane-stat"><strong>0</strong><span>熔断触发</span></div></div></div>
+        </div>
+        <div class="card account-manager"><div class="manager-orbit"><span>Ki</span></div><h3>客户经理 Agent · Kiki</h3><p>统筹 A 客户全部服务、SLA 与异常</p><div class="manager-list"><div><span>当前运行</span><strong>4 个工作流</strong></div><div><span>品牌记忆</span><strong>28 条已批准</strong></div><div><span>账号连接</span><strong>6 / 6 在线</strong></div><div><span>下次汇报</span><strong>周五 18:00</strong></div></div></div>
+      </div>
+    </section>
+
+    <section class="screen" id="operations">
+      <div class="page-head"><div><div class="eyebrow">Service Operations</div><h1>服务运营</h1><p>用统一状态机管理社媒、SEO、广告、建站和维护，不让任务停留在聊天消息里。</p></div><div class="head-actions"><div class="tabs"><span class="tab active">全局</span><span class="tab">社媒</span><span class="tab">SEO</span><span class="tab">广告</span><span class="tab">网站</span></div><button class="primary-button">＋ 新建工作单</button></div></div>
+      <div class="pipeline">
+        <div class="pipeline-col"><div class="pipeline-head"><span>计划进入</span><span>4</span></div><div class="work-card"><div class="work-meta"><span>A 客户 · 社媒</span><span>L0</span></div><h4>生成 8 月第一周选题池</h4><p>从行业热点、历史表现和品牌策略中生成 12 个候选。</p><div class="work-foot"><div class="mini-avatars"><i>言</i><i>林</i></div><span class="due">18 JUL</span></div></div><div class="work-card"><div class="work-meta"><span>ZLink · 官网</span><span>L1</span></div><h4>更新独立站案例页面</h4><p>将最新交付复盘转为案例内容并更新 SEO 元数据。</p><div class="work-foot"><div class="mini-avatars"><i>许</i></div><span class="due">19 JUL</span></div></div></div>
+        <div class="pipeline-col"><div class="pipeline-head"><span>Agent 执行</span><span>6</span></div><div class="work-card"><div class="work-meta"><span>B 客户 · 建站</span><span>RUN</span></div><h4>修复移动端导航与表单间距</h4><p>QA 自动返工第 1 次，预计 23 分钟完成。</p><div class="work-foot"><div class="mini-avatars"><i>许</i><i>QA</i></div><span class="due">72%</span></div></div><div class="work-card"><div class="work-meta"><span>A 客户 · SEO</span><span>RUN</span></div><h4>生产「工业设备采购指南」长文</h4><p>已完成 SERP 拆解，正在补充 E-E-A-T 证据。</p><div class="work-foot"><div class="mini-avatars"><i>SEO</i></div><span class="due">58%</span></div></div></div>
+        <div class="pipeline-col"><div class="pipeline-head"><span>质量检查</span><span>3</span></div><div class="work-card"><div class="work-meta"><span>A 客户 · 社媒</span><span>QA</span></div><h4>7 条 LinkedIn 内容成品</h4><p>品牌语气通过，1 条事实引用等待来源核验。</p><div class="work-foot"><div class="mini-avatars"><i>映</i><i>QA</i></div><span class="due">1 ISSUE</span></div></div><div class="work-card"><div class="work-meta"><span>ZLink · 社媒</span><span>QA</span></div><h4>小红书案例拆解图文</h4><p>质量分 94，未命中绝对化表达。</p><div class="work-foot"><div class="mini-avatars"><i>言</i><i>映</i></div><span class="due">94/100</span></div></div></div>
+        <div class="pipeline-col"><div class="pipeline-head"><span>等待授权</span><span>4</span></div><div class="work-card"><div class="work-meta"><span>A 客户 · 广告</span><span>L2</span></div><h4>Meta 测试系列放量 40%</h4><p>超过预授权 30% 上限，等待主理人决定。</p><div class="work-foot"><div class="mini-avatars"><i>广</i><i>财</i></div><span class="due">2H LEFT</span></div></div><div class="work-card"><div class="work-meta"><span>B 客户 · 建站</span><span>L2</span></div><h4>官网正式上线</h4><p>全部 26 项上线检查通过。</p><div class="work-foot"><div class="mini-avatars"><i>许</i><i>QA</i></div><span class="due">READY</span></div></div></div>
+        <div class="pipeline-col"><div class="pipeline-head"><span>已完成</span><span>18</span></div><div class="work-card"><div class="work-meta"><span>ZLink · 海外社媒</span><span>DONE</span></div><h4>LinkedIn 周五内容已发布</h4><p>平台回执成功，T+1 指标将在明日同步。</p><div class="work-foot"><div class="mini-avatars"><i>时</i></div><span class="due">15:36</span></div></div><div class="work-card"><div class="work-meta"><span>A 客户 · SEO</span><span>DONE</span></div><h4>42 个关键词排名已更新</h4><p>3 个词上升进入 Top 10，无异常下跌。</p><div class="work-foot"><div class="mini-avatars"><i>数</i></div><span class="due">13:20</span></div></div></div>
+      </div>
+    </section>
+
+    <section class="screen" id="calendar">
+      <div class="page-head"><div><div class="eyebrow">Operations Calendar</div><h1>运营日历</h1><p>不是人工排期表，而是服务 Playbook 自动生成的未来工作承诺。</p></div><div class="head-actions"><button class="button">筛选 · 全部客户</button><button class="button">本周</button><button class="primary-button">＋ 添加例外计划</button></div></div>
+      <div class="calendar-shell">
+        <div class="card"><div class="week"><div class="week-head"></div><div class="week-head">周一<strong>14</strong></div><div class="week-head">周二<strong>15</strong></div><div class="week-head">周三<strong>16</strong></div><div class="week-head">周四<strong>17</strong></div><div class="week-head">周五<strong>18</strong></div><div class="week-head">周六<strong>19</strong></div><div class="week-head">周日<strong>20</strong></div>
+          <div class="time-cell">09:00</div><div class="day-cell"><div class="event">A · 周选题生成<br>社媒 Playbook</div></div><div class="day-cell"><div class="event green">B · 网站 QA<br>自动检查 26 项</div></div><div class="day-cell"></div><div class="day-cell"><div class="event amber">A · 广告巡检<br>CPA / ROAS</div></div><div class="day-cell"><div class="event">ZL · 海外社媒<br>LinkedIn</div></div><div class="day-cell"></div><div class="day-cell"></div>
+          <div class="time-cell">12:00</div><div class="day-cell"></div><div class="day-cell"><div class="event">A · SEO 内容<br>文章初稿</div></div><div class="day-cell"><div class="event">ZL · 小红书<br>案例图文</div></div><div class="day-cell"></div><div class="day-cell"><div class="event green">B · 官网预览<br>客户确认包</div></div><div class="day-cell"></div><div class="day-cell"></div>
+          <div class="time-cell">15:00</div><div class="day-cell"><div class="event green">A · 排名同步<br>42 个关键词</div></div><div class="day-cell"></div><div class="day-cell"><div class="event amber">A · Meta 优化<br>规则内降预算</div></div><div class="day-cell"><div class="event">A · 内容日历<br>L2 批量审批</div></div><div class="day-cell"></div><div class="day-cell"><div class="event">ZL · 官网更新<br>案例页面</div></div><div class="day-cell"></div>
+          <div class="time-cell">18:00</div><div class="day-cell"></div><div class="day-cell"><div class="event">ZL · 国内社媒<br>数据回收</div></div><div class="day-cell"></div><div class="day-cell"><div class="event green">全局 · 日报<br>异常与成本</div></div><div class="day-cell"><div class="event green">A · 运营周报<br>自动生成</div></div><div class="day-cell"></div><div class="day-cell"></div>
+          <div class="time-cell">21:00</div><div class="day-cell"></div><div class="day-cell"></div><div class="day-cell"></div><div class="day-cell"></div><div class="day-cell"></div><div class="day-cell"></div><div class="day-cell"></div>
+        </div></div>
+        <div class="card card-pad"><div class="card-title"><h3>下一批自动触发</h3><small>pg_cron</small></div><div class="schedule-item"><span class="schedule-time">16:00 · 18 分钟后</span><h4>社媒排期扫描</h4><p>3 个账号，2 条内容已满足发布条件。</p></div><div class="schedule-item"><span class="schedule-time">18:00 · 今天</span><h4>老板日报</h4><p>汇总执行、审批、异常和 Agent 成本。</p></div><div class="schedule-item"><span class="schedule-time">00:15 · 明天</span><h4>SEO 排名同步</h4><p>A 客户 42 个词，B 客户 18 个词。</p></div><div class="schedule-item"><span class="schedule-time">09:00 · 周一</span><h4>周度 Playbook</h4><p>自动生成 19 个任务和 4 个交付物。</p></div></div>
+      </div>
+    </section>
+
+    <section class="screen" id="inbox">
+      <div class="page-head"><div><div class="eyebrow">Owner Inbox</div><h1>老板收件箱</h1><p>这里不是任务列表。只有越权、高风险、异常和真正需要你判断的事项才会出现。</p></div><div class="head-actions"><button class="button">查看授权规则</button><button class="primary-button">批准已选择</button></div></div>
+      <div class="inbox-layout">
+        <div class="card">
+          <div class="inbox-item"><div class="select-box"></div><div class="inbox-main"><div class="inbox-title"><span class="level">L2</span><strong>A 客户 · 批准 8 月第一周内容日历</strong></div><p>7 条内容覆盖 LinkedIn、小红书和视频号。全部通过品牌、事实和平台合规质检，可整批授权。</p><div class="inbox-facts"><span>影响：3 个平台</span><span>风险：低</span><span>授权期：7 天</span><span>由 Kiki 提交</span></div></div><div class="inbox-side"><span class="time">12 分钟前</span><div class="approval-actions" style="justify-content:flex-end"><button class="tiny-button approve">批准</button><button class="tiny-button">预览</button></div></div></div>
+          <div class="inbox-item"><div class="select-box"></div><div class="inbox-main"><div class="inbox-title"><span class="level">L2</span><strong>A 客户 · Meta 测试系列预算增加</strong></div><p>建议日预算从 ¥300 提升至 ¥420，超出当前预授权 30% 上限。过去 7 天 CPA 低于目标 18%。</p><div class="inbox-facts"><span>预计增量：¥840 / 周</span><span>ROAS：2.8x</span><span>回滚：自动</span></div></div><div class="inbox-side"><span class="time">36 分钟前</span><div class="approval-actions" style="justify-content:flex-end"><button class="tiny-button approve">批准</button><button class="tiny-button">拒绝</button></div></div></div>
+          <div class="inbox-item"><div class="select-box"></div><div class="inbox-main"><div class="inbox-title"><span class="level" style="color:#e78b8b;background:rgba(235,119,119,.11)">异常</span><strong>A 客户 · 1 条内容事实来源不足</strong></div><p>质检 Agent 无法验证“覆盖 30 个国家”这一表述，已自动暂停该条内容，其余 6 条不受影响。</p><div class="inbox-facts"><span>不影响 SLA</span><span>已尝试返工 1 次</span></div></div><div class="inbox-side"><span class="time">1 小时前</span><div class="approval-actions" style="justify-content:flex-end"><button class="tiny-button">查看证据</button></div></div></div>
+          <div class="inbox-item"><div class="select-box"></div><div class="inbox-main"><div class="inbox-title"><span class="level">L2</span><strong>B 客户 · 官网正式上线</strong></div><p>26 项上线检查全部通过，已创建恢复点和回滚方案。正式部署需要一次性授权。</p><div class="inbox-facts"><span>QA：26/26</span><span>备份：已完成</span><span>回滚：10 分钟</span></div></div><div class="inbox-side"><span class="time">2 小时前</span><div class="approval-actions" style="justify-content:flex-end"><button class="tiny-button approve">批准上线</button></div></div></div>
+        </div>
+        <div class="grid" style="align-content:start">
+          <div class="card policy"><div class="card-title"><h3>当前授权范围</h3><small>Policy v3.2</small></div><div class="policy-row"><strong>自有社媒 · L1</strong><p>通过质检且在排期内的常规内容可自动发布。</p></div><div class="policy-row"><strong>客户内容 · L2 批量</strong><p>批准内容日历后，7 天内计划内内容无需逐条确认。</p></div><div class="policy-row"><strong>广告 · 预算区间</strong><p>可自动降预算 20%；任何加预算必须事前批准。</p></div><div class="policy-row"><strong>网站 · 白名单维护</strong><p>文章、案例和元数据可自动更新，结构修改需审批。</p></div></div>
+          <div class="card card-pad"><div class="card-title"><h3>本周减少的人工操作</h3></div><div class="metric-value" style="font-size:24px">6h 42m</div><div class="metric-foot"><span class="up">↑ 18%</span><span>由批量授权和规则内执行节省</span></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="agents">
+      <div class="page-head"><div><div class="eyebrow">Agent Organization</div><h1>Agent 团队</h1><p>专业 Agent 是共享岗位，不按客户复制。每次运行加载严格隔离的客户、服务和项目上下文。</p></div><div class="head-actions"><button class="button">技能配置</button><button class="button">模型策略</button><button class="primary-button">＋ 新岗位</button></div></div>
+      <div class="grid grid-main">
+        <div class="card agent-group"><div class="card-title"><h3>总部与交付治理</h3><small>4 个岗位</small></div><div class="agent-grid"><div class="agent-card"><div class="agent-head"><div class="agent-face">Ki</div><span class="health good"><i class="dot"></i></span></div><h4>执行经理 · Kiki</h4><p>目标拆解、跨服务编排、异常升级</p><div class="agent-load"><div class="agent-load-top"><span>当前负载</span><span>64%</span></div><div class="bar"><span style="width:64%"></span></div></div></div><div class="agent-card"><div class="agent-head"><div class="agent-face">Mo</div><span class="health good"><i class="dot"></i></span></div><h4>交付运营 · Momo</h4><p>SLA、流程、建站交付与自动化</p><div class="agent-load"><div class="agent-load-top"><span>当前负载</span><span>72%</span></div><div class="bar"><span style="width:72%"></span></div></div></div><div class="agent-card"><div class="agent-head"><div class="agent-face">QA</div><span class="health good"><i class="dot"></i></span></div><h4>独立质检 Agent</h4><p>品牌、事实、平台、交付标准</p><div class="agent-load"><div class="agent-load-top"><span>当前负载</span><span>48%</span></div><div class="bar green"><span style="width:48%"></span></div></div></div><div class="agent-card"><div class="agent-head"><div class="agent-face">Po</div><span class="health good"><i class="dot"></i></span></div><h4>财务风控 · Poppy</h4><p>预算、报价、熔断和高风险复核</p><div class="agent-load"><div class="agent-load-top"><span>当前负载</span><span>22%</span></div><div class="bar green"><span style="width:22%"></span></div></div></div></div></div>
+        <div class="card card-pad"><div class="card-title"><h3>团队状态</h3><small>实时</small></div><div class="metric-value" style="font-size:24px">7 / 7</div><div class="metric-foot"><span class="up">全部在线</span><span>4 个运行中</span></div><div class="manager-list" style="margin-top:15px"><div><span>今日完成</span><strong>23 项</strong></div><div><span>平均质量分</span><strong>93.6</strong></div><div><span>自动返工</span><strong>3 次</strong></div><div><span>今日模型成本</span><strong>¥18.70</strong></div></div></div>
+      </div>
+      <div class="card agent-group section-gap"><div class="card-title"><h3>专业生产组</h3><small>共享客户上下文</small></div><div class="agent-grid"><div class="agent-card"><div class="agent-head"><div class="agent-face">Li</div><span class="health good"><i class="dot"></i></span></div><h4>社媒文案 · Lili</h4><p>选题、标题、正文与视频脚本</p><div class="agent-load"><div class="agent-load-top"><span>负载</span><span>86%</span></div><div class="bar"><span style="width:86%"></span></div></div></div><div class="agent-card"><div class="agent-head"><div class="agent-face">Vi</div><span class="health good"><i class="dot"></i></span></div><h4>视觉素材 · Vivi</h4><p>图片、视频、品牌模板与字幕</p><div class="agent-load"><div class="agent-load-top"><span>负载</span><span>58%</span></div><div class="bar"><span style="width:58%"></span></div></div></div><div class="agent-card"><div class="agent-head"><div class="agent-face">Ni</div><span class="health good"><i class="dot"></i></span></div><h4>排期发布 · Nini</h4><p>审批门、调度、发布和结果回写</p><div class="agent-load"><div class="agent-load-top"><span>负载</span><span>41%</span></div><div class="bar green"><span style="width:41%"></span></div></div></div><div class="agent-card"><div class="agent-head"><div class="agent-face">SEO</div><span class="health good"><i class="dot"></i></span></div><h4>SEO 运营 Agent</h4><p>关键词、内容、技术审计和排名</p><div class="agent-load"><div class="agent-load-top"><span>负载</span><span>67%</span></div><div class="bar"><span style="width:67%"></span></div></div></div></div></div>
+      <div class="card card-pad section-gap"><div class="card-title"><h3>正在运行</h3><small>全量留痕</small></div><div class="run-row"><span class="activity-avatar">言</span><span><strong>A 客户 · 下周选题池</strong><br>creative_content · qwen-plus</span><span>运行 2m 18s</span><span class="run-status">生成中</span></div><div class="run-row"><span class="activity-avatar">许</span><span><strong>B 客户 · 移动端 QA 返工</strong><br>coding · codex_local</span><span>运行 8m 42s</span><span class="run-status">执行中</span></div><div class="run-row"><span class="activity-avatar">SEO</span><span><strong>A 客户 · 技术 SEO 审计</strong><br>analysis · deepseek</span><span>运行 4m 09s</span><span class="run-status">抓取中</span></div></div>
+    </section>
+  </main>
+</div>
+<script>
+  const titles = {today:'今日驾驶舱',clients:'客户中心','client-detail':'A 客户运营空间',operations:'服务运营',calendar:'运营日历',inbox:'老板收件箱',agents:'Agent 团队'};
+  function activate(name) {
+    if (!titles[name]) name = 'today';
+    document.querySelectorAll('.screen').forEach(el => el.classList.toggle('active', el.id === name));
+    document.querySelectorAll('.nav-item[data-screen]').forEach(el => el.classList.toggle('active', el.dataset.screen === name || (name === 'client-detail' && el.dataset.screen === 'clients')));
+    document.getElementById('crumb-title').textContent = titles[name];
+    const url = new URL(location.href); url.searchParams.set('screen', name); history.replaceState({}, '', url);
+  }
+  document.querySelectorAll('.nav-item[data-screen]').forEach(el => el.addEventListener('click', () => activate(el.dataset.screen)));
+  document.querySelectorAll('[data-open-detail]').forEach(el => el.addEventListener('click', () => activate('client-detail')));
+  activate(new URLSearchParams(location.search).get('screen') || 'today');
+</script>
+</body>
+</html>

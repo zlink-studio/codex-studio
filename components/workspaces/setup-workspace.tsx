@@ -27,9 +27,18 @@ const envTemplate = `NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
 DEMO_OWNER_ID=
+CREDENTIAL_ENCRYPTION_KEY=
+CREDENTIAL_ENCRYPTION_KEY_VERSION=v1
+CREDENTIAL_ADMIN_TOKEN=
+OBSIDIAN_VAULT_DIR=/你的绝对路径/ObsidianVault
+N8N_TOOL_CONNECTION_ID=
+N8N_CALLBACK_SECRET=
+CONTENT_SCHEDULER_TOKEN=
+CONTENT_ADMIN_TOKEN=
+CONTENT_TIMEZONE=Asia/Shanghai
 OPENAI_API_KEY=
 OPENAI_MODEL=gpt-4o-mini
-NEXT_PUBLIC_ALLOW_DEMO_DATA=false`;
+USE_LOCAL_STORE=false`;
 
 const ownerSql = `insert into public.users (id, email, display_name, role)
 values ('你的 auth.users.id', '你的邮箱', 'Owner', 'owner')
@@ -135,6 +144,13 @@ export function SetupWorkspace() {
                 NEXT_PUBLIC_SUPABASE_ANON_KEY: health.checks.supabaseAnonKey,
                 SUPABASE_SERVICE_ROLE_KEY: health.checks.supabaseServiceRole,
                 DEMO_OWNER_ID: health.checks.demoOwnerId,
+                CREDENTIAL_ENCRYPTION_KEY: health.checks.credentialEncryption,
+                CREDENTIAL_ADMIN_TOKEN: health.checks.credentialAdmin,
+                OBSIDIAN_VAULT_DIR: health.checks.obsidianVault,
+                N8N_SOCIAL_CONNECTION: health.checks.n8nSocial,
+                N8N_CALLBACK_SECRET: health.checks.n8nCallbackSecret,
+                CONTENT_SCHEDULER_TOKEN: health.checks.contentSchedulerToken,
+                CONTENT_ADMIN_TOKEN: health.checks.contentAdminToken,
                 OPENAI_API_KEY: health.checks.openai,
                 CODEX_LOCAL: health.checks.codexLocal,
                 MANUAL_BRIDGE: health.checks.manualBridge,
