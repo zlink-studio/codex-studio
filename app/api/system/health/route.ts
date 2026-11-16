@@ -1,5 +1,6 @@
 import { ok } from "@/lib/api";
 import { isCredentialAdminConfigured, isCredentialEncryptionConfigured } from "@/lib/credentials";
+import { isAnthropicConfigured } from "@/lib/llm/anthropic-client";
 import { isCodexLocalConfigured } from "@/lib/llm/providers/codex-local";
 import { isObsidianVaultConfigured } from "@/lib/obsidian-vault";
 import { getRuntimeMode, isDemoDataEnabled, isSupabaseConfigured } from "@/lib/runtime";
@@ -22,6 +23,7 @@ export async function GET() {
     contentSchedulerToken: Boolean(process.env.CONTENT_SCHEDULER_TOKEN),
     contentAdminToken: Boolean(process.env.CONTENT_ADMIN_TOKEN),
     openai: Boolean(process.env.OPENAI_API_KEY),
+    anthropic: isAnthropicConfigured(),
     codexLocal: isCodexLocalConfigured(),
     manualBridge: process.env.LLM_NO_KEY_MODE === "manual_bridge",
     demoData: isDemoDataEnabled()
@@ -48,7 +50,7 @@ export async function GET() {
     N8N_CALLBACK_SECRET: !checks.n8nCallbackSecret,
     CONTENT_SCHEDULER_TOKEN: !checks.contentSchedulerToken,
     CONTENT_ADMIN_TOKEN: !checks.contentAdminToken,
-    OPENAI_API_KEY_OR_CODEX_LOCAL: !checks.openai && !checks.codexLocal && !checks.manualBridge
+    OPENAI_API_KEY_OR_CODEX_LOCAL: !checks.openai && !checks.codexLocal && !checks.manualBridge && !checks.anthropic
   })
     .filter(([, value]) => value)
     .map(([key]) => key);
@@ -69,7 +71,7 @@ export async function GET() {
       checks.n8nCallbackSecret &&
       checks.contentSchedulerToken &&
       checks.contentAdminToken &&
-      (checks.openai || checks.codexLocal || checks.manualBridge) &&
+      (checks.openai || checks.codexLocal || checks.manualBridge || checks.anthropic) &&
       database.connected
   });
 }

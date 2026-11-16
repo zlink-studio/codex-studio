@@ -14,7 +14,7 @@ export const providerSeeds: ProviderSeed[] = [
   provider("gemini", "Google Gemini", "GEMINI_API_KEY", true, "https://generativelanguage.googleapis.com", "真实接入：支持 Gemini API Key，也支持 Vertex AI OAuth/ADC。"),
   provider("openrouter", "OpenRouter", "OPENROUTER_API_KEY", false, "https://openrouter.ai/api/v1", "占位：后续统一接入多模型市场。"),
   provider("litellm", "LiteLLM", "LITELLM_API_KEY", false, null, "占位：后续接入企业自建模型网关。"),
-  provider("anthropic", "Anthropic Claude", "ANTHROPIC_API_KEY", false, "https://api.anthropic.com", "占位：后续接 Claude。"),
+  provider("anthropic", "Anthropic Claude", "ANTHROPIC_API_KEY", true, "https://api.anthropic.com", "真实接入：配置后负责目标拆解、风险规划和质量复核；执行仍走 GPT 等模型。"),
   provider("deepseek", "DeepSeek", "DEEPSEEK_API_KEY", true, "https://api.deepseek.com", "真实接入：DeepSeek OpenAI 兼容接口。"),
   provider("qwen", "Qwen / 通义千问", "QWEN_API_KEY", true, "https://dashscope.aliyuncs.com/compatible-mode/v1", "真实接入：通义千问 DashScope OpenAI 兼容接口。"),
   provider("kimi", "Kimi", "KIMI_API_KEY", false, "https://api.moonshot.cn", "占位：后续接 Kimi。")
@@ -30,7 +30,8 @@ export const modelCatalogSeeds: ModelCatalogItem[] = [
   catalog("gemini", "gemini-3.1-pro", "Gemini 3.1 Pro", 1000000, null, null, ["chat", "json", "vision", "long_context"], ["strong_reasoning", "review_policy", "long_context"], true, "Gemini Pro 模型，具体额度以 Google AI Studio/Cloud 为准"),
   catalog("openrouter", "openrouter/auto", "OpenRouter Auto", null, null, null, ["chat", "json"], ["future_multi_model"], false, "占位 adapter"),
   catalog("litellm", "router/default", "LiteLLM Default", null, null, null, ["chat", "json"], ["future_gateway"], false, "占位 adapter"),
-  catalog("anthropic", "claude-placeholder", "Claude Placeholder", null, null, null, ["chat", "long_context"], ["future_long_context"], false, "占位 adapter"),
+  catalog("anthropic", "claude-opus-5-5", "Claude Opus 5.5", 1000000, 4, 20, ["chat", "json", "tools", "vision", "long_context"], ["strong_reasoning", "review_policy", "long_context"], true, "默认规划/复核模型，可用 ANTHROPIC_MODEL 覆盖"),
+  catalog("anthropic", "claude-sonnet-5-5", "Claude Sonnet 5.5", 1000000, 2, 10, ["chat", "json", "tools", "vision", "long_context"], ["coding", "creative_content"], true, "更快更省的 Claude 模型"),
   catalog("deepseek", "deepseek-v4-flash", "DeepSeek V4 Flash", 1000000, 0.14, 0.28, ["chat", "json", "tools", "long_context"], ["low_cost", "simple", "data", "coding"], true, "DeepSeek OpenAI 兼容接口，默认轻量生成模型"),
   catalog("deepseek", "deepseek-v4-pro", "DeepSeek V4 Pro", 1000000, 0.435, 0.87, ["chat", "json", "tools", "long_context"], ["strong_reasoning", "review_policy", "coding"], true, "DeepSeek 更强推理模型"),
   catalog("qwen", "qwen-turbo", "Qwen Turbo", 1000000, 0.3, 0.6, ["chat", "json", "long_context"], ["low_cost", "simple", "data"], true, "通义千问低成本模型，适合批量轻任务"),
