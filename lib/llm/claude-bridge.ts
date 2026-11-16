@@ -3,15 +3,16 @@ import type { IncomingMessage } from "node:http";
 
 // Client for the Claude bridge on the owner's VPS, which runs the logged-in Claude
 // Code CLI (claude.ai subscription) so the workbench needs no Anthropic API key.
-// The bridge uses a self-signed certificate; we trust exactly that certificate
-// (CLAUDE_BRIDGE_CA, base64-encoded PEM) and nothing else.
+// Normally reached through a Cloudflare tunnel (public certificate). When the
+// bridge is reached directly, CLAUDE_BRIDGE_CA (base64 PEM) pins its self-signed
+// certificate and nothing else is trusted.
 
 function config() {
   const url = process.env.CLAUDE_BRIDGE_URL?.trim();
   const token = process.env.CLAUDE_BRIDGE_TOKEN?.trim();
   const caB64 = process.env.CLAUDE_BRIDGE_CA?.trim();
-  if (!url || !token || !caB64) return null;
-  return { url: url.replace(/\/$/, ""), token, ca: Buffer.from(caB64, "base64").toString("utf8") };
+  if (!url || !token) return null;
+  return { url: url.replace(/\/$/, ""), token, ca: caB64 ? Buffer.from(caB64, "base64").toString("utf8") : undefined };
 }
 
 export function isClaudeBridgeConfigured() {
@@ -36,7 +37,7 @@ export function bridgeRequest(path: string, body: unknown, signal?: AbortSignal)
       target,
       {
         method: "POST",
-        ca: settings.ca,
+        ...(settings.ca ? { ca: settings.ca } : {}),
         headers: {
           authorization: `Bearer ${settings.token}`,
           "content-type": "application/json",
@@ -73,11 +74,12 @@ export async function bridgeComplete(input: { system?: string; prompt: string; m
   const text = await readAll(response);
   let payload: any = null;
   try {
-    payload = JSON.parse(text);
+    // The bridge sends newline heartbeats before the JSON body.
+    payload = JSON.parse(text.trim());
   } catch {
     // fall through to the status error below
   }
-  if (response.statusCode !== 200 || !payload) {
+  if (response.statusCode !== 200 || !payload || payload.error) {
     throw new ClaudeBridgeError(payload?.error ?? `Claude bridge returned HTTP ${response.statusCode}`, response.statusCode);
   }
   return payload as BridgeCompletion;
