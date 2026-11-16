@@ -2,7 +2,8 @@
 // (claude.ai subscription) instead of an API key. Single-owner, personal use.
 //
 // Security model:
-// - HTTPS with a self-signed cert the website pins (CA = this cert).
+// - Reached through a Cloudflare tunnel (see tunnel.sh); the local listener is
+//   HTTPS with a self-signed cert.
 // - Every request needs `Authorization: Bearer $BRIDGE_TOKEN`.
 // - `claude` runs with ALL built-in tools disabled (--tools ""), no user settings,
 //   hooks or CLAUDE.md (--setting-sources ""), in an empty working dir. The only
@@ -167,6 +168,11 @@ async function handleComplete(req, res) {
   const controller = new AbortController();
   res.on("close", () => controller.abort());
   await completePool.acquire();
+  // Headers go out now and a newline every 20s keeps proxies (Cloudflare drops
+  // silent responses after ~100s) from closing the request. Errors are reported
+  // in the JSON body: {"error": "..."}.
+  res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+  const heartbeat = setInterval(() => res.write("\n"), 20_000);
   let result = null;
   try {
     const { code, stderr } = await runClaude(args, prompt, {
@@ -180,17 +186,21 @@ async function handleComplete(req, res) {
       }
     });
     if (!result || result.is_error || code !== 0) {
-      return json(res, 502, { error: result?.result || stderr.trim() || `claude exited with ${code}` });
+      res.end(JSON.stringify({ error: result?.result || stderr.trim().slice(-500) || `claude exited with ${code}` }));
+      return;
     }
     const usage = result.usage || {};
-    json(res, 200, {
-      text: result.result ?? "",
-      model: Object.keys(result.modelUsage || {})[0] || model,
-      inputTokens: (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0),
-      outputTokens: usage.output_tokens || 0,
-      costUsd: result.total_cost_usd || 0
-    });
+    res.end(
+      JSON.stringify({
+        text: result.result ?? "",
+        model: Object.keys(result.modelUsage || {})[0] || model,
+        inputTokens: (usage.input_tokens || 0) + (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0),
+        outputTokens: usage.output_tokens || 0,
+        costUsd: result.total_cost_usd || 0
+      })
+    );
   } finally {
+    clearInterval(heartbeat);
     completePool.release();
   }
 }
@@ -231,6 +241,8 @@ async function handleConsole(req, res) {
   await consolePool.acquire();
   res.writeHead(200, { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" });
   const send = (event) => res.write(`${JSON.stringify(event)}\n`);
+  // Keeps the stream alive through proxies while a long tool call runs.
+  const heartbeat = setInterval(() => send({ type: "ping" }), 20_000);
   const toolNames = new Map();
   let finalSession = sessionId;
   let done = false;
@@ -283,6 +295,7 @@ async function handleConsole(req, res) {
       send({ type: "error", message: stderr.trim().slice(-500) || `claude exited with ${code}` });
     }
   } finally {
+    clearInterval(heartbeat);
     consolePool.release();
     res.end();
   }
@@ -291,6 +304,10 @@ async function handleConsole(req, res) {
 const server = https.createServer(
   { key: readFileSync(path.join(here, "tls/key.pem")), cert: readFileSync(path.join(here, "tls/cert.pem")) },
   async (req, res) => {
+    const started = Date.now();
+    res.on("finish", () =>
+      console.log(`${new Date().toISOString()} ${req.socket.remoteAddress} ${req.method} ${req.url} ${res.statusCode} ${Date.now() - started}ms`)
+    );
     try {
       if (!authorized(req)) return json(res, 401, { error: "unauthorized" });
       if (req.method === "GET" && req.url === "/health") {
