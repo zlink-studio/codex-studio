@@ -6,8 +6,10 @@ import {
   estimateClaudeCost,
   getAnthropicClient,
   getClaudeModel,
-  isAnthropicConfigured
+  isAnthropicConfigured,
+  shouldUseClaudeBridge
 } from "@/lib/llm/anthropic-client";
+import { bridgeRequest } from "@/lib/llm/claude-bridge";
 
 export const dynamic = "force-dynamic";
 // An agent turn with tool calls (planning, running a task) can take minutes.
@@ -36,6 +38,7 @@ const SYSTEM_PROMPT = `你是 ZLink Studio OS 工作台里的 Claude 控制台�
 
 type ConsoleBody = {
   messages?: unknown;
+  session_id?: string | null;
   model?: string;
 };
 
@@ -43,7 +46,7 @@ type StreamEvent =
   | { type: "text"; text: string }
   | { type: "tool_use"; id: string; name: string; input: unknown }
   | { type: "tool_result"; id: string; name: string; content: string; isError: boolean }
-  | { type: "done"; messages: Anthropic.Beta.BetaMessageParam[]; usage: { inputTokens: number; outputTokens: number; cost: number }; model: string }
+  | { type: "done"; messages: Anthropic.Beta.BetaMessageParam[]; session_id?: string | null; usage: { inputTokens: number; outputTokens: number; cost: number }; model: string }
   | { type: "error"; message: string };
 
 function isMessageList(value: unknown): value is Anthropic.Beta.BetaMessageParam[] {
@@ -58,14 +61,70 @@ function isMessageList(value: unknown): value is Anthropic.Beta.BetaMessageParam
   return valid && value[0].role === "user" && value[value.length - 1].role === "user";
 }
 
+function lastUserText(messages: Anthropic.Beta.BetaMessageParam[]) {
+  const last = messages[messages.length - 1];
+  if (typeof last.content === "string") return last.content;
+  return (last.content ?? [])
+    .map((block) => (block.type === "text" ? block.text : ""))
+    .join("")
+    .trim();
+}
+
+// Bridge mode: the VPS keeps the conversation as a Claude Code session and runs the
+// agent loop itself, calling this site's tools through /api/mcp. We pass its
+// NDJSON stream straight through.
+async function proxyToBridge(request: Request, body: ConsoleBody, messages: Anthropic.Beta.BetaMessageParam[]) {
+  const message = lastUserText(messages);
+  if (!message) return fail("message is empty");
+  try {
+    const upstream = await bridgeRequest(
+      "/v1/console",
+      { message, session_id: body.session_id ?? null, model: body.model === "sonnet" ? "sonnet" : "opus" },
+      request.signal
+    );
+    if (upstream.statusCode !== 200) {
+      const chunks: Buffer[] = [];
+      for await (const chunk of upstream) chunks.push(Buffer.from(chunk));
+      const text = Buffer.concat(chunks).toString("utf8");
+      let error = `Claude bridge returned HTTP ${upstream.statusCode}`;
+      try {
+        error = JSON.parse(text).error ?? error;
+      } catch {
+        // keep the generic message
+      }
+      return fail(error, 502);
+    }
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        try {
+          for await (const chunk of upstream) controller.enqueue(new Uint8Array(chunk));
+        } catch {
+          // client went away or bridge dropped; end the stream
+        } finally {
+          controller.close();
+        }
+      },
+      cancel() {
+        upstream.destroy();
+      }
+    });
+    return new Response(stream, {
+      headers: { "content-type": "application/x-ndjson; charset=utf-8", "cache-control": "no-store" }
+    });
+  } catch (error) {
+    return fail(error instanceof Error ? error.message : "Claude bridge request failed", 502);
+  }
+}
+
 export async function POST(request: Request) {
   if (!isAnthropicConfigured()) {
-    return fail("ANTHROPIC_API_KEY 未配置：请在 Vercel 项目的 Environment Variables 中添加后重新部署。", 503);
+    return fail("Claude 未配置：需要 VPS 上的 Claude 转发服务（CLAUDE_BRIDGE_*）或 ANTHROPIC_API_KEY。", 503);
   }
   const body = await parseJson<ConsoleBody>(request);
   if (!body || !isMessageList(body.messages)) {
     return fail("messages must be a non-empty user/assistant list that starts and ends with a user turn");
   }
+  if (shouldUseClaudeBridge()) return proxyToBridge(request, body, body.messages);
 
   const model = MODELS[body.model ?? ""] ?? getClaudeModel();
   const history: Anthropic.Beta.BetaMessageParam[] = [...body.messages];

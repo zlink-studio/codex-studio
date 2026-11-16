@@ -4,8 +4,10 @@ import {
   estimateClaudeCost,
   getAnthropicClient,
   getClaudeModel,
-  isAnthropicConfigured
+  isAnthropicConfigured,
+  shouldUseClaudeBridge
 } from "@/lib/llm/anthropic-client";
+import { bridgeComplete } from "@/lib/llm/claude-bridge";
 import type { LLMProviderAdapter, RunLLMInput, RunLLMResult } from "@/lib/llm/types";
 
 const JSON_INSTRUCTION = "只输出一个合法的 JSON 对象，不要输出 Markdown 代码块或任何额外文字。";
@@ -17,7 +19,7 @@ export const anthropicProvider: LLMProviderAdapter = {
     const model = getClaudeModel(input.model?.startsWith("claude-") ? input.model : null);
 
     if (!isAnthropicConfigured()) {
-      return failed(model, startedAt, "ANTHROPIC_API_KEY is not configured.");
+      return failed(model, startedAt, "Neither the Claude bridge nor ANTHROPIC_API_KEY is configured.");
     }
 
     // The router speaks OpenAI-style messages; Claude takes system text separately
@@ -33,6 +35,33 @@ export const anthropicProvider: LLMProviderAdapter = {
       }));
     if (messages.length === 0 || messages[0].role !== "user") {
       messages.unshift({ role: "user", content: "请开始。" });
+    }
+
+    if (shouldUseClaudeBridge()) {
+      try {
+        const conversation = messages
+          .map((message) => `${message.role === "assistant" ? "ASSISTANT" : "USER"}:\n${String(message.content)}`)
+          .join("\n\n---\n\n");
+        const result = await bridgeComplete({
+          system: systemParts.join("\n\n") || undefined,
+          prompt: messages.length === 1 ? String(messages[0].content) : conversation,
+          model
+        });
+        return {
+          provider: "anthropic",
+          model: result.model,
+          content: result.text.trim(),
+          inputTokens: result.inputTokens,
+          outputTokens: result.outputTokens,
+          // Billed to the owner's Claude subscription, not per token.
+          estimatedCost: 0,
+          latencyMs: Date.now() - startedAt,
+          status: "succeeded",
+          raw: { via: "claude_bridge", list_price_usd: result.costUsd }
+        };
+      } catch (error) {
+        return failed(model, startedAt, error instanceof Error ? error.message : "Claude bridge request failed");
+      }
     }
 
     try {

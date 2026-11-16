@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { isClaudeBridgeConfigured } from "@/lib/llm/claude-bridge";
 
 // Shared Claude client for the provider adapter and the console.
 // Server-only: never import this from a client component.
@@ -18,8 +19,18 @@ const PRICING: Record<string, { input: number; output: number }> = {
 
 let cachedClient: Anthropic | null = null;
 
-export function isAnthropicConfigured() {
+export function hasAnthropicApiKey() {
   return Boolean(process.env.ANTHROPIC_API_KEY?.trim());
+}
+
+// Claude is available either through an API key or through the VPS bridge
+// (the owner's logged-in Claude Code). The bridge wins when both are set.
+export function isAnthropicConfigured() {
+  return hasAnthropicApiKey() || isClaudeBridgeConfigured();
+}
+
+export function shouldUseClaudeBridge() {
+  return isClaudeBridgeConfigured();
 }
 
 export function getClaudeModel(override?: string | null) {
@@ -28,7 +39,7 @@ export function getClaudeModel(override?: string | null) {
 }
 
 export function getAnthropicClient() {
-  if (!isAnthropicConfigured()) {
+  if (!hasAnthropicApiKey()) {
     throw new Error("ANTHROPIC_API_KEY is not configured.");
   }
   cachedClient ??= new Anthropic();

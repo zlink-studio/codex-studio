@@ -19,7 +19,7 @@ type ServerEvent =
   | { type: "text"; text: string }
   | { type: "tool_use"; id: string; name: string; input: unknown }
   | { type: "tool_result"; id: string; name: string; content: string; isError: boolean }
-  | { type: "done"; messages: ApiMessage[]; usage: { inputTokens: number; outputTokens: number; cost: number }; model: string }
+  | { type: "done"; messages: ApiMessage[]; session_id?: string | null; usage: { inputTokens: number; outputTokens: number; cost: number }; model: string }
   | { type: "error"; message: string };
 
 const STORAGE_KEY = "zl-console-v1";
@@ -48,7 +48,9 @@ const HELP_TEXT = [
 let idCounter = 0;
 const newId = () => `${Date.now().toString(36)}-${(idCounter += 1)}`;
 
-function loadState(): { entries: Entry[]; history: ApiMessage[]; model: ModelKey; cost: number } | null {
+type SavedState = { entries: Entry[]; history: ApiMessage[]; sessionId: string | null; model: ModelKey; cost: number };
+
+function loadState(): SavedState | null {
   try {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : null;
@@ -57,7 +59,7 @@ function loadState(): { entries: Entry[]; history: ApiMessage[]; model: ModelKey
   }
 }
 
-function saveState(state: { entries: Entry[]; history: ApiMessage[]; model: ModelKey; cost: number }) {
+function saveState(state: SavedState) {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch {
@@ -108,6 +110,7 @@ function ToolLine({ entry }: { entry: Extract<Entry, { kind: "tool" }> }) {
 export function ConsoleWorkspace() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [history, setHistory] = useState<ApiMessage[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
   const [model, setModel] = useState<ModelKey>("opus");
   const [cost, setCost] = useState(0);
   const [input, setInput] = useState("");
@@ -122,6 +125,7 @@ export function ConsoleWorkspace() {
     if (saved) {
       setEntries(saved.entries ?? []);
       setHistory(saved.history ?? []);
+      setSessionId(saved.sessionId ?? null);
       setModel(saved.model === "sonnet" ? "sonnet" : "opus");
       setCost(Number(saved.cost) || 0);
     }
@@ -129,8 +133,8 @@ export function ConsoleWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (loaded && !busy) saveState({ entries, history, model, cost });
-  }, [loaded, busy, entries, history, model, cost]);
+    if (loaded && !busy) saveState({ entries, history, sessionId, model, cost });
+  }, [loaded, busy, entries, history, sessionId, model, cost]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ block: "end" });
@@ -162,7 +166,7 @@ export function ConsoleWorkspace() {
         const response = await fetch("/api/console", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ messages: requestHistory, model }),
+          body: JSON.stringify({ messages: requestHistory, session_id: sessionId, model }),
           signal: controller.signal
         });
         if (!response.ok || !response.body) {
@@ -194,6 +198,7 @@ export function ConsoleWorkspace() {
             } else if (event.type === "done") {
               finished = true;
               setHistory([...requestHistory, ...event.messages]);
+              if (event.session_id) setSessionId(event.session_id);
               setCost((current) => current + event.usage.cost);
             } else if (event.type === "error") {
               pushNotice(event.message, "error");
@@ -212,7 +217,7 @@ export function ConsoleWorkspace() {
         inputRef.current?.focus();
       }
     },
-    [history, model]
+    [history, sessionId, model]
   );
 
   const submit = () => {
@@ -225,6 +230,7 @@ export function ConsoleWorkspace() {
       if (command === "/clear") {
         setEntries([]);
         setHistory([]);
+        setSessionId(null);
         setCost(0);
         return;
       }
@@ -266,12 +272,13 @@ export function ConsoleWorkspace() {
         <Terminal size={15} className="text-[#aaa8ff]" />
         <span className="font-mono text-[12px] text-ink">claude</span>
         <span className="font-mono text-[11px] text-moss/60">· {model === "opus" ? "Opus 5.5" : "Sonnet 5.5"}</span>
-        <span className="ml-auto font-mono text-[10px] text-moss/50">本会话约 ${cost.toFixed(3)}</span>
+        <span className="ml-auto font-mono text-[10px] text-moss/50">{cost > 0 ? `本会话约 $${cost.toFixed(3)}` : "VPS Claude Code"}</span>
         <button
           type="button"
           onClick={() => {
             setEntries([]);
             setHistory([]);
+            setSessionId(null);
             setCost(0);
           }}
           disabled={busy}

@@ -8,7 +8,8 @@ const PUBLIC_PATHS = new Set([
   "/api/auth/login",
   "/api/n8n/callback",
   "/api/content-items/callback",
-  "/api/content-items/dispatch-due"
+  "/api/content-items/dispatch-due",
+  "/api/mcp"
 ]);
 
 export async function middleware(request: NextRequest) {
