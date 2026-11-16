@@ -91,7 +91,20 @@ const tools: Record<string, ConsoleTool> = {
         qwen: Boolean(process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY),
         manual_bridge: process.env.LLM_NO_KEY_MODE === "manual_bridge"
       },
-      supabase_configured: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
+      supabase_configured: Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY),
+      // Presence only, never values.
+      claude_bridge: {
+        url_set: Boolean(process.env.CLAUDE_BRIDGE_URL?.trim()),
+        url_host: (() => {
+          try {
+            return new URL(process.env.CLAUDE_BRIDGE_URL ?? "").host;
+          } catch {
+            return null;
+          }
+        })(),
+        token_set: Boolean(process.env.CLAUDE_BRIDGE_TOKEN?.trim()),
+        ca_set: Boolean(process.env.CLAUDE_BRIDGE_CA?.trim())
+      }
     })
   },
 
