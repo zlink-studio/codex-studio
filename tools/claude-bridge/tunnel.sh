@@ -5,7 +5,8 @@
 # redeploys production so the website follows.
 set -u
 cd "$(dirname "$0")" || exit 1
-exec 9>tunnel.lock
+# Children must not inherit fd 9, or they would hold the lock forever.
+exec 9>tunnel.run.lock
 flock -n 9 || exit 0
 
 export PATH="/home/claudeops/.local/bin:/usr/bin:/bin"
@@ -23,7 +24,7 @@ healthy() {
 start_tunnel() {
   [ -s tunnel.pid ] && kill "$(cat tunnel.pid)" 2>/dev/null
   : > tunnel.log
-  nohup cloudflared tunnel --no-autoupdate --url "https://127.0.0.1:${PORT:-18443}" --no-tls-verify >> tunnel.log 2>&1 &
+  nohup cloudflared tunnel --no-autoupdate --url "https://127.0.0.1:${PORT:-18443}" --no-tls-verify >> tunnel.log 2>&1 9>&- &
   echo $! > tunnel.pid
   for _ in $(seq 1 40); do
     url=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' tunnel.log | head -1)
@@ -41,8 +42,8 @@ sync_vercel() {
   url=$(cat tunnel.url)
   [ "$url" = "$(cat synced.url 2>/dev/null)" ] && return 0
   cd "$REPO" || return 1
-  "$VERCEL" env rm CLAUDE_BRIDGE_URL production --yes >/dev/null 2>&1
-  printf '%s' "$url" | "$VERCEL" env add CLAUDE_BRIDGE_URL production >/dev/null 2>&1 || { log "vercel env add failed"; return 1; }
+  "$VERCEL" env add CLAUDE_BRIDGE_URL --environment production --value "$url" --no-sensitive --force --yes >/dev/null 2>&1 \
+    || { log "vercel env add failed"; return 1; }
   if "$VERCEL" redeploy codex-studio-sandy.vercel.app --target production >> "$OLDPWD/tunnel-manager.log" 2>&1; then
     cd "$OLDPWD" && echo "$url" > synced.url && log "vercel updated to $url"
   else
@@ -50,6 +51,6 @@ sync_vercel() {
   fi
 }
 
-ss -ltn | grep -q ":${PORT:-18443} " || ./start.sh
+ss -ltn | grep -q ":${PORT:-18443} " || ./start.sh 9>&-
 healthy || { sleep 5; healthy; } || start_tunnel
 healthy && sync_vercel
