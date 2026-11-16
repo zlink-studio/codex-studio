@@ -1,3 +1,4 @@
+import { getClaudeModel, isAnthropicConfigured } from "@/lib/llm/anthropic-client";
 import { anthropicProvider } from "@/lib/llm/providers/anthropic";
 import { codexLocalProvider, isCodexLocalConfigured } from "@/lib/llm/providers/codex-local";
 import { deepseekProvider } from "@/lib/llm/providers/deepseek";
@@ -49,6 +50,22 @@ export async function runLLM(input: RunLLMInput): Promise<RunLLMResult> {
     model: input.model ?? defaultModelForProvider(providerName),
     messages: input.messages
   });
+
+  // Claude is the planner/reviewer when configured; if it fails, fall back to the
+  // platform's regular default provider so the workflow keeps moving.
+  if (providerName === "anthropic" && result.status === "failed") {
+    const fallbackProvider = chooseDefaultProvider({ excludeAnthropic: true });
+    if (fallbackProvider !== "anthropic") {
+      const fallbackResult = await runLLM({
+        ...input,
+        provider: fallbackProvider,
+        model: defaultModelForProvider(fallbackProvider)
+      });
+      return fallbackResult.status === "failed"
+        ? { ...fallbackResult, error: `anthropic: ${result.error ?? "failed"}; ${fallbackProvider}: ${fallbackResult.error ?? "failed"}` }
+        : fallbackResult;
+    }
+  }
 
   if (shouldFallbackToCodexLocal(providerName, result)) {
     return codexLocalProvider.run({
@@ -118,6 +135,16 @@ export function resolveModelPolicy(context: ModelRoutingContext): ResolvedModelP
     };
   }
 
+  if (isAnthropicConfigured() && CLAUDE_POLICIES.has(selected.name)) {
+    selected = {
+      ...selected,
+      primaryProvider: "anthropic",
+      primaryModel: getClaudeModel(),
+      fallbackProvider: selected.primaryProvider,
+      fallbackModel: selected.primaryModel
+    };
+  }
+
   if (context.agent?.preferredProvider || context.agent?.preferredModel || context.agent?.fallbackProvider || context.agent?.fallbackModel) {
     selected = {
       ...selected,
@@ -163,17 +190,28 @@ function policy(
   };
 }
 
-function chooseDefaultProvider(): ModelProviderName {
-  if (process.env.DEFAULT_LLM_PROVIDER) return process.env.DEFAULT_LLM_PROVIDER as ModelProviderName;
+// Planning, risk decisions and reviews go to Claude when ANTHROPIC_API_KEY is set;
+// execution policies keep using the configured GPT / other providers.
+const CLAUDE_POLICIES = new Set(["strong_reasoning", "review_policy"]);
+
+export function plannerProvider(): ModelProviderName | undefined {
+  return isAnthropicConfigured() ? "anthropic" : undefined;
+}
+
+function chooseDefaultProvider(options: { excludeAnthropic?: boolean } = {}): ModelProviderName {
+  const envDefault = process.env.DEFAULT_LLM_PROVIDER as ModelProviderName | undefined;
+  if (envDefault && !(options.excludeAnthropic && envDefault === "anthropic")) return envDefault;
   if (process.env.OPENAI_API_KEY) return "openai";
   if (isCodexLocalConfigured()) return "codex_local";
   if (process.env.DEEPSEEK_API_KEY) return "deepseek";
   if (process.env.QWEN_API_KEY || process.env.DASHSCOPE_API_KEY) return "qwen";
   if (process.env.GEMINI_API_KEY) return "gemini";
+  if (!options.excludeAnthropic && isAnthropicConfigured()) return "anthropic";
   return "manual_bridge";
 }
 
 function defaultModelForProvider(providerName: ModelProviderName) {
+  if (providerName === "anthropic") return getClaudeModel();
   if (providerName === "codex_local") return process.env.CODEX_LOCAL_MODEL || "openai/gpt-5.5";
   if (providerName === "manual_bridge") return "chatgpt-web-manual";
   if (providerName === "gemini") return process.env.GEMINI_MODEL || "gemini-3.1-flash-lite";

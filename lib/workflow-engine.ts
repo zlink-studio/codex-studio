@@ -3,7 +3,7 @@ import path from "path";
 import { assertTaskExecutionAllowed, classifyApproval, classifyTaskApproval, taskApprovalState } from "@/lib/approval-policy";
 import { getDefaultModelPolicies } from "@/lib/llm/catalog";
 import { appendCollectionItem, patchCollectionItem, readCollection, writeCollection } from "@/lib/local-store";
-import { resolveModelPolicy, runLLM } from "@/lib/llm/router";
+import { plannerProvider, resolveModelPolicy, runLLM } from "@/lib/llm/router";
 import { formatMemoriesForPrompt, retrieveMemoryForTask } from "@/lib/memory/service";
 import { getOutputsRoot } from "@/lib/storage-paths";
 import type {
@@ -1290,6 +1290,7 @@ async function createDeliverable(input: {
 async function generateProjectBrief(input: { goal: string; project: AnyRow | null }) {
   const fallback = buildFallbackBrief(input.goal, input.project);
   const llm = await runLLM({
+    provider: plannerProvider(),
     responseFormat: "json_object",
     messages: [
       {
@@ -1319,6 +1320,7 @@ async function generateTaskPlan(input: {
 }): Promise<WorkflowTaskDraft[]> {
   const fallback = buildFallbackTaskPlan(input.goal, input.project, input.agents, input.skills);
   const llm = await runLLM({
+    provider: plannerProvider(),
     responseFormat: "json_object",
     messages: [
       {

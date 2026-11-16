@@ -16,6 +16,7 @@ import {
   Search,
   Settings,
   SlidersHorizontal,
+  SquareTerminal,
   UsersRound,
   Workflow
 } from "lucide-react";
@@ -23,6 +24,7 @@ import { cn } from "@/lib/utils";
 
 const primaryNav = [
   { href: "/", label: "今日总览", icon: LayoutDashboard },
+  { href: "/console", label: "Claude 控制台", icon: SquareTerminal },
   { href: "/clients", label: "客户", icon: UsersRound },
   { href: "/operations", label: "服务运营", icon: Workflow },
   { href: "/calendar", label: "运营日历", icon: CalendarDays },
