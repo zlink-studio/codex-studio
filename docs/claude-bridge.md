@@ -45,3 +45,12 @@ chmod 600 bridge.env tls/*.pem
 
 免费的 Cloudflare 快速隧道每次重启地址都会变；`tunnel.sh` 每分钟检查一次，地址变了就更新 Vercel 并重新部署（约 2 分钟）。
 想要固定地址，可以把自己的域名接入 Cloudflare，改用命名隧道（named tunnel）。
+
+## CloudCLI 远程访问（不需要 SSH）
+
+`cli-gate.mjs` 是 CloudCLI 前面的门禁反向代理，经第二条 Cloudflare 快速隧道对外。
+OS 的 `/api/cli-ticket`（需登录）签发 2 分钟、一次性的通行证，门禁验证后设置 7 天的签名 Cookie，
+再转发 HTTP 和 WebSocket 到 `127.0.0.1:3001`。没有通行证的访问一律 403；CloudCLI 自己的登录仍然有效。
+CloudCLI 隧道地址只存在 VPS 的 `cli-tunnel.url`，OS 通过 bridge 的 `/cli-url` 查询，地址变化不需要重新部署。
+
+需要的变量：`bridge.env` 里的 `CLI_GATE_SECRET`、`CLI_GATE_PORT`，以及 Vercel 上同值的 `CLI_GATE_SECRET`。

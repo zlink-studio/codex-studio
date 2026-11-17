@@ -313,6 +313,15 @@ const server = https.createServer(
       if (req.method === "GET" && req.url === "/health") {
         return json(res, 200, { ok: true, console: consolePool.active, complete: completePool.active, mcp: Boolean(MCP_URL && MCP_TOKEN) });
       }
+      if (req.method === "GET" && req.url === "/cli-url") {
+        let url = "";
+        try {
+          url = readFileSync(path.join(here, "cli-tunnel.url"), "utf8").trim();
+        } catch {
+          // no CloudCLI tunnel yet
+        }
+        return json(res, url ? 200 : 404, url ? { url } : { error: "CloudCLI tunnel not running" });
+      }
       if (req.method === "POST" && req.url === "/v1/complete") return await handleComplete(req, res);
       if (req.method === "POST" && req.url === "/v1/console") return await handleConsole(req, res);
       json(res, 404, { error: "not found" });

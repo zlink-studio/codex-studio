@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Start the bridge if it is not already listening. Safe to run from cron every minute.
+# Start the bridge and the CloudCLI gate if they are not already listening.
 cd "$(dirname "$0")" || exit 1
-PORT=$(grep -m1 '^BRIDGE_PORT=' bridge.env | cut -d= -f2)
-ss -ltn | grep -q ":${PORT:-18443} " && exit 0
 export PATH="/home/claudeops/.local/bin:/usr/bin:/bin"
-nohup /usr/bin/node bridge.mjs >> bridge.log 2>&1 &
+port() { grep -m1 "^$1=" bridge.env | cut -d= -f2; }
+ss -ltn | grep -q ":$(port BRIDGE_PORT) " || nohup /usr/bin/node bridge.mjs >> bridge.log 2>&1 &
+ss -ltn | grep -q ":$(port CLI_GATE_PORT) " || nohup /usr/bin/node cli-gate.mjs >> cli-gate.log 2>&1 &
