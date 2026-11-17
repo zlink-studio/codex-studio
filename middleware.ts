@@ -12,7 +12,25 @@ const PUBLIC_PATHS = new Set([
   "/api/mcp"
 ]);
 
+// Production pages on *.vercel.app redirect to the custom domain (CANONICAL_ORIGIN,
+// e.g. https://os.gozlink.com). API routes are left alone so machine callers
+// (VPS bridge, n8n callbacks) keep working on either host. Previews are untouched.
+function canonicalRedirect(request: NextRequest) {
+  const origin = process.env.CANONICAL_ORIGIN?.trim();
+  if (!origin || process.env.VERCEL_ENV !== "production") return null;
+  const host = request.headers.get("host") ?? "";
+  const { pathname, search } = request.nextUrl;
+  if (!host.endsWith(".vercel.app") || pathname.startsWith("/api/")) return null;
+  try {
+    return NextResponse.redirect(new URL(`${pathname}${search}`, origin), 308);
+  } catch {
+    return null;
+  }
+}
+
 export async function middleware(request: NextRequest) {
+  const redirect = canonicalRedirect(request);
+  if (redirect) return redirect;
   const { pathname, search } = request.nextUrl;
   if (PUBLIC_PATHS.has(pathname)) return NextResponse.next();
 

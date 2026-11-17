@@ -24,7 +24,7 @@ cat > bridge.env <<ENV
 BRIDGE_PORT=18443
 BRIDGE_TOKEN=$(openssl rand -hex 32)
 CLAUDE_BIN=$HOME/.local/bin/claude
-ZLINK_MCP_URL=https://<工作台域名>/api/mcp
+ZLINK_MCP_URL=https://os.gozlink.com/api/mcp
 ZLINK_MCP_TOKEN=$(openssl rand -hex 32)
 MAX_CONCURRENT=2
 ENV
