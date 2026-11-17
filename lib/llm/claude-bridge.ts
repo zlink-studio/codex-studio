@@ -69,6 +69,23 @@ export type BridgeCompletion = {
   costUsd: number;
 };
 
+// Current public URL of the CloudCLI gate tunnel on the VPS (changes when the
+// tunnel restarts, so it is looked up on demand instead of stored in env).
+export async function bridgeCliUrl(): Promise<string> {
+  const settings = config();
+  if (!settings) throw new ClaudeBridgeError("Claude bridge is not configured.");
+  const response = await fetch(`${settings.url}/cli-url`, {
+    headers: { authorization: `Bearer ${settings.token}` },
+    cache: "no-store",
+    signal: AbortSignal.timeout(15_000)
+  });
+  const payload = (await response.json().catch(() => null)) as { url?: string; error?: string } | null;
+  if (!response.ok || !payload?.url) {
+    throw new ClaudeBridgeError(payload?.error ?? `Claude bridge returned HTTP ${response.status}`, response.status);
+  }
+  return payload.url;
+}
+
 export async function bridgeComplete(input: { system?: string; prompt: string; model?: string }): Promise<BridgeCompletion> {
   const response = await bridgeRequest("/v1/complete", input);
   const text = await readAll(response);
