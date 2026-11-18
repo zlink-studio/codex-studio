@@ -1,27 +1,22 @@
 {
-  "compilerOptions": {
-    "target": "es5",
-    "lib": ["dom", "dom.iterable", "esnext"],
-    "allowJs": false,
-    "skipLibCheck": true,
-    "strict": true,
-    "noEmit": true,
-    "esModuleInterop": true,
-    "module": "esnext",
-    "moduleResolution": "bundler",
-    "resolveJsonModule": true,
-    "isolatedModules": true,
-    "jsx": "preserve",
-    "incremental": true,
-    "plugins": [
-      {
-        "name": "next"
-      }
-    ],
-    "paths": {
-      "@/*": ["./*"]
-    }
-  },
-  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "extends": "./tsconfig.base.json",
+  "files": [],
+  "references": [
+    { "path": "./packages/adapter-utils" },
+    { "path": "./packages/google-sheets-mcp-server" },
+    { "path": "./packages/mcp-server" },
+    { "path": "./packages/shared" },
+    { "path": "./packages/db" },
+    { "path": "./packages/adapters/claude-local" },
+    { "path": "./packages/adapters/codex-local" },
+    { "path": "./packages/adapters/cursor-local" },
+    { "path": "./packages/adapters/hermes-gateway" },
+    { "path": "./packages/adapters/hermes" },
+    { "path": "./packages/adapters/openclaw-gateway" },
+    { "path": "./packages/adapters/opencode-local" },
+    { "path": "./packages/adapters/pi-local" },
+    { "path": "./server" },
+    { "path": "./ui" },
+    { "path": "./cli" }
+  ]
 }

@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "ZLink 工作台",
+  "short_name": "ZLink",
+  "description": "AI Agent 业务协作工作台",
+  "start_url": "/",
+  "scope": "/",
+  "display": "browser",
+  "orientation": "any",
+  "theme_color": "#18181b",
+  "background_color": "#18181b",
+  "icons": [
+    { "src": "/brands/zlink/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/brands/zlink/mark.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}
