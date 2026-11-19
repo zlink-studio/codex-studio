@@ -31,6 +31,7 @@ function readNumericField(record: Record<string, unknown>, key: string) {
 
 function readCommentText(value: unknown) {
   if (typeof value !== "string") return null;
+  if (value.trim() === "end_turn") return null;
   return value.trim().length > 0 ? value : null;
 }
 

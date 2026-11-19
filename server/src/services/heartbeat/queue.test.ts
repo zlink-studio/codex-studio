@@ -99,6 +99,20 @@ describe.skipIf(!support.supported)("heartbeat queue database wiring", () => {
     return { company, agent, issue, wake, run };
   }
 
+  it("does not admit assignment or idle timer work for a project discussion", async () => {
+    const { company, agent, issue } = await fixture("succeeded");
+    await db.update(issues).set({ workMode: "discussion", status: "in_review", executionRunId: null }).where(eq(issues.id, issue.id));
+    const deps = callbacks(db);
+    deps.getAgent.mockResolvedValue(agent);
+    const queue = createHeartbeatQueue(db, deps);
+    const before = await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.companyId, company.id));
+    expect(await queue.enqueueWakeup(agent.id, { source: "assignment", reason: "issue_assigned",
+      payload: { issueId: issue.id }, contextSnapshot: { issueId: issue.id } })).toBeNull();
+    expect(await queue.enqueueWakeup(agent.id, { source: "timer", reason: "timer" })).toBeNull();
+    expect(await db.select().from(heartbeatRuns).where(eq(heartbeatRuns.companyId, company.id))).toHaveLength(before.length);
+    expect(deps.executeRun).not.toHaveBeenCalled();
+  });
+
   async function strandedMention(runtimeMode = "legacy") {
     const seeded = await fixture("succeeded");
     await db.update(heartbeatRuns).set({ runtimeMode, nativeIssueId: runtimeMode === "native" ? seeded.issue.id : null, finishedAt: new Date() }).where(eq(heartbeatRuns.id, seeded.run.id));

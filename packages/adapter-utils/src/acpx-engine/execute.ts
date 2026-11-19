@@ -3215,7 +3215,8 @@ export function buildAcpxRunSummary(input: {
     if (text) return text;
   }
   const fallback = (input.fallback ?? "").trim();
-  return fallback;
+  // Protocol termination describes the run, not a user-facing answer.
+  return ["end_turn", "completed", "complete", "succeeded"].includes(fallback) ? "" : fallback;
 }
 
 // acpx substitutes a literal "tool call" title when an ACP tool_call_update

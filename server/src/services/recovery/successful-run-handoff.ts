@@ -78,6 +78,7 @@ type IssueRow = Pick<
   | "identifier"
   | "title"
   | "description"
+  | "workMode"
   | "originKind"
   | "status"
   | "assigneeAgentId"
@@ -139,6 +140,7 @@ const SUCCESSFUL_RUN_HANDOFF_VALID_PATH_SKIP_REASONS = new Set([
   "issue is under an active pause hold",
   "corrective handoff wake already exists for this source run",
   "chat conversation already owns the next action",
+  "discussion waits for the next user message",
 ]);
 
 export function isSuccessfulRunHandoffValidPathSkip(
@@ -493,6 +495,7 @@ export function decideSuccessfulRunHandoff(input: {
     return { kind: "skip", reason: "missing issue comment retry owns the next action" };
   }
   if (!issue) return { kind: "skip", reason: "issue not found" };
+  if (issue.workMode === "discussion") return { kind: "skip", reason: "discussion waits for the next user message" };
   if (!agent) return { kind: "skip", reason: "agent not found" };
   if (issue.companyId !== run.companyId || agent.companyId !== run.companyId) {
     return { kind: "skip", reason: "company scope mismatch" };

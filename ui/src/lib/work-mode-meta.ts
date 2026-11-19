@@ -38,7 +38,7 @@ const PLANNING_CLASSES = {
 };
 
 export function isIssueWorkMode(value: unknown): value is IssueWorkMode {
-  return value === "standard" || value === "ask" || value === "planning";
+  return value === "standard" || value === "ask" || value === "planning" || value === "discussion";
 }
 
 export function workModeMetaList(): WorkModeMeta[] {
@@ -64,12 +64,19 @@ export function workModeMetaList(): WorkModeMeta[] {
       tone: "ask",
       classes: ASK_CLASSES,
     },
+    {
+      value: "discussion",
+      label: "日常沟通",
+      icon: MessageCircleQuestion,
+      tone: "neutral",
+      classes: STANDARD_CLASSES,
+    },
   ];
 }
 
 export function workModeMetaFor(mode: IssueWorkMode): WorkModeMeta {
   const modes = workModeMetaList();
-  return modes.find((meta) => meta.value === mode) ?? modes[0]!;
+  return modes.find((meta) => meta.value === mode) ?? modes.find((meta) => meta.value === "standard")!;
 }
 
 export function nextWorkMode(mode: IssueWorkMode): IssueWorkMode {
@@ -79,6 +86,7 @@ export function nextWorkMode(mode: IssueWorkMode): IssueWorkMode {
 }
 
 export function titleForPendingWorkMode(mode: IssueWorkMode): string {
+  if (mode === "discussion") return "收到留言才唤醒；具体工作交给独立执行任务。";
   if (mode === "ask") {
     return "Ask mode for this submission. Click to change. The responsible will answer in this thread; no implementation work.";
   }

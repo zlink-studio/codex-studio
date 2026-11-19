@@ -422,7 +422,7 @@ describe("shared ACPX engine runtime behavior", () => {
     expect((turnInputs[0]?.text as string).length).toBeGreaterThan(0);
     expect(turnInputs[0]?.signal).toBeInstanceOf(AbortSignal);
     expect((turnInputs[0]?.signal as AbortSignal).aborted).toBe(false);
-    expect(result.summary).toBe("end_turn");
+    expect(result.summary).toBe("");
     expect(result.sessionParams?.configFingerprint).toBeTypeOf("string");
     expect((result.sessionParams?.configFingerprint as string).length).toBeGreaterThan(0);
     expect(result.sessionParams?.sessionKey).toBe(`paperclip:company-1:agent-1:default:${result.sessionParams?.configFingerprint}`);
@@ -1435,7 +1435,7 @@ describe("shared ACPX engine runtime behavior", () => {
         fallback: "end_turn",
       }),
     ).toBe("final update");
-    expect(buildAcpxRunSummary({ outputSegments: ["", "  "], fallback: "end_turn" })).toBe("end_turn");
+    expect(buildAcpxRunSummary({ outputSegments: ["", "  "], fallback: "end_turn" })).toBe("");
   });
 
   it("coalesces placeholder-title tool updates when the adapter opts in", async () => {

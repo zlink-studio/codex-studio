@@ -67,6 +67,13 @@ Agent runs can use project and execution workspaces, managed runtime services su
 
 ### Task Management
 
+Project threads may use the explicit `discussion` work mode for daily communication.
+They run on new messages or explicit user actions, park after a reply, and do not
+enter idle timer heartbeats or missing-disposition/comment repair loops. Concrete
+execution belongs in separate assigned standard tasks. The distinction is stored
+as work mode, never inferred from a title. Changing a task into a discussion keeps
+its project, identifier, comments, and links.
+
 Task management is hierarchical. At any moment, every piece of work must trace back to the company's top-level goal through a chain of parent tasks:
 
 ```

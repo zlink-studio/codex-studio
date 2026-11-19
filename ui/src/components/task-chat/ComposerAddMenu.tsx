@@ -50,6 +50,7 @@ export function ComposerAddMenu({
     ...(privacy ? [{ id: "composer-add-private", label: "Private task", detail: privacy.inherited, Icon: Lock, select: () => privacy.onChange(!privacy.private), selected: privacy.private, disabled: Boolean(privacy.inherited) }] : []),
     ...(onGoal ? [{ id: "composer-add-goal", label: "Goal", detail: "Keep pursuing", Icon: Target, select: onGoal }] : []),
     ...(onModeChange ? [
+      { id: "composer-add-discussion", label: "日常沟通", detail: "收到留言才唤醒", Icon: MessageCircleQuestion, select: () => onModeChange(mode === "discussion" ? "standard" : "discussion"), selected: mode === "discussion" },
       { id: "composer-add-plan", label: "Plan mode", detail: "Plan before acting", Icon: ClipboardList, select: () => onModeChange(mode === "planning" ? "standard" : "planning"), selected: mode === "planning" },
       { id: "composer-add-ask", label: "Ask mode", detail: "Answer without changes", Icon: MessageCircleQuestion, select: () => onModeChange(mode === "ask" ? "standard" : "ask"), selected: mode === "ask" },
     ] : []),

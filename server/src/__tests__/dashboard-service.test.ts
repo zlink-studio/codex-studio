@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
-import { agents, companies, createDb, heartbeatRuns } from "@paperclipai/db";
+import { agents, companies, createDb, heartbeatRuns, issues } from "@paperclipai/db";
 import {
   getEmbeddedPostgresTestSupport,
   startEmbeddedPostgresTestDatabase,
@@ -49,12 +49,23 @@ describeEmbeddedPostgres("dashboard service", () => {
 
   afterEach(async () => {
     await db.delete(heartbeatRuns);
+    await db.delete(issues);
     await db.delete(agents);
     await db.delete(companies);
   });
 
   afterAll(async () => {
     await tempDb?.cleanup();
+  });
+
+  it("keeps idle discussions out of execution task totals", async () => {
+    const companyId = randomUUID();
+    await db.insert(companies).values({ id: companyId, name: "Discussion totals", issuePrefix: "DISC" });
+    await db.insert(issues).values([
+      { companyId, title: "Daily discussion", workMode: "discussion", status: "in_review" },
+      { companyId, title: "Execution", workMode: "standard", status: "in_progress" },
+    ]);
+    expect((await dashboardService(db).summary(companyId)).tasks).toMatchObject({ open: 1, inProgress: 1, blocked: 0, done: 0 });
   });
 
   it("selects distinct task cards before limiting and keeps taskless runs separate", async () => {

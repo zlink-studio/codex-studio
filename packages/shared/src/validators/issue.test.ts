@@ -530,6 +530,8 @@ describe("issue validators", () => {
   });
 
   it("defaults issue work mode to standard and accepts ask, planning, and skill_test", () => {
+    expect(createIssueSchema.parse({ title: "Project discussion", workMode: "discussion" }).workMode).toBe("discussion");
+    expect(updateIssueSchema.parse({ workMode: "discussion" }).workMode).toBe("discussion");
     expect(createIssueSchema.parse({ title: "Plan first" }).workMode).toBe(
       "standard",
     );

@@ -1,4 +1,5 @@
 import { authorizationService } from "../authorization.js";
+import { allowsDiscussionWake } from "../agent-conversations.js";
 import { assertTaskRetryConversationAllowed, readTaskRetryIntent, retireSupersededTaskRetry } from "../task-retry.js";
 import { insertIssueComment } from "../issue-comment-writes.js";
 import { withExternalAdmissionGuard, assertNoExternalOverlap } from "../../modules/external-agents/index.js";
@@ -589,6 +590,7 @@ export function createHeartbeatQueue(db: Db, dependencies: HeartbeatQueueDepende
           isNull(issues.hiddenAt),
           inArray(issues.status, [...TIMER_ACTIONABLE_ISSUE_STATUSES]),
           isNull(issues.conversationAgentId),
+          sql`${issues.workMode} <> 'discussion'`,
           nonIdleSlackIssueCondition(),
         ),
       )
@@ -2206,6 +2208,17 @@ export function createHeartbeatQueue(db: Db, dependencies: HeartbeatQueueDepende
     if (reason === "issue_comment_mentioned" || enrichedContextSnapshot.wakeReason === "issue_comment_mentioned") return null;
     if (issueId) {
       const conversation = await getIssueExecutionContext(agent.companyId, issueId);
+      if (!allowsDiscussionWake(conversation, {
+        reason: reason ?? readNonEmptyString(enrichedContextSnapshot.wakeReason),
+        wakeCommentId: conversation?.workMode === "discussion" && opts.requestedByActorType !== "user" ? null : wakeCommentId,
+        manualUserWake: opts.manualUserWake && opts.requestedByActorType === "user",
+        taskRetryRequestId: opts.taskRetryRequestId,
+        interactionContinuation: hasInteractionContinuationWakeContext(enrichedContextSnapshot),
+        retryOfRunId: readNonEmptyString(enrichedContextSnapshot.retryOfRunId),
+      })) return null;
+      if (conversation?.workMode === "discussion" && opts.manualUserWake && opts.requestedByActorType === "user") {
+        enrichedContextSnapshot.discussionManualUserWake = true;
+      }
       if (taskRetryActorId && conversation) await assertTaskRetryConversationAllowed(db, conversation, taskRetryActorId);
       if (reason === "issue_children_completed" && conversation?.originKind === "onboarding_first_task") enrichedContextSnapshot.onboardingCompletion = true;
       if (isConversation(conversation)) {

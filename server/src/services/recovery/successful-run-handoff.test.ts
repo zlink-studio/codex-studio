@@ -67,6 +67,15 @@ function decide(overrides: Partial<Parameters<typeof decideSuccessfulRunHandoff>
   });
 }
 
+describe("project discussion disposition", () => {
+  it("does not repair an intentionally idle discussion while ordinary tasks retain recovery", () => {
+    const decision = decide({ issue: { ...issue, workMode: "discussion" } });
+    expect(decision).toEqual({ kind: "skip", reason: "discussion waits for the next user message" });
+    expect(isSuccessfulRunHandoffValidPathSkip(decision)).toBe(true);
+    expect(decide().kind).toBe("enqueue");
+  });
+});
+
 describe("successful run handoff decision", () => {
   it("queues one normal-model corrective wake to the original agent when a successful run has no disposition", () => {
     const decision = decide();

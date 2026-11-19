@@ -23,6 +23,7 @@ import { IssueCreatedFromNote } from "@/components/task-detail/IssueCreatedFromN
 import { EmailThreadProvider } from "../components/EmailMessageCard";
 import { EmailTaskActivity } from "../components/EmailTaskActivity";
 import { TaskChatScrollNavigation, taskChatScrollEntry } from "@/components/task-chat/scroll-navigation";
+import { resumeIssueNow } from "../lib/issue-monitor";
 import {
   lazy,
   memo,
@@ -4730,19 +4731,22 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
 
   const checkIssueMonitorNow = useMutation({
     mutationKey: ["check-issue-monitor-now", issueId],
-    mutationFn: () => issuesApi.checkMonitorNow(issueId!),
-    onSuccess: () => {
+    mutationFn: () => resumeIssueNow(issue, {
+      checkMonitorNow: () => issuesApi.checkMonitorNow(issueId!),
+      retryScheduledRetryNow: () => issuesApi.retryScheduledRetryNow(issueId!),
+    }),
+    onSuccess: (action) => {
       invalidateIssueDetail();
       invalidateIssueRunState();
       invalidateIssueCollections();
       pushToast({
-        title: "Monitor check queued",
+        title: action === "retry" ? "Retry queued" : "Monitor check queued",
         tone: "success",
       });
     },
     onError: (err) => {
       pushToast({
-        title: "Monitor check failed",
+        title: "Unable to resume task",
         body:
           err instanceof Error
             ? err.message
@@ -7248,6 +7252,13 @@ export function TaskDetailSurface({ conversation, tasksTab }: { tasksTab?: TaskS
         shellSectionClass,
       )}
     >
+      {issue.workMode === "discussion" ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          {issue.status === "in_review"
+            ? "日常沟通 · 等待留言，不会自动轮询；具体工作另建执行任务。"
+            : "日常沟通 · 收到留言后回复；具体工作另建执行任务。"}
+        </p>
+      ) : null}
       {streamlinedTaskDetailEnabled ? (
         <div className="flex min-w-0 items-start gap-2 md:items-center md:pr-8">
           {!proposedTaskHeader ? (

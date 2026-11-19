@@ -713,7 +713,7 @@ describe("composed ACPX run fault matrix", () => {
     expect(result.sessionId).toBe("backend-session");
     expect(result.sessionDisplayId).toBe("agent-session");
     expect(result.sessionParams).toBeTruthy();
-    expect(result.summary).toBe("end_turn");
+    expect(result.summary).toBe("");
     expect(result.resultJson?.status).toBe("completed");
     assertDispositionReport(capture.last(), {
       acquired: SANDBOX_WITH_MANAGED_HOME,

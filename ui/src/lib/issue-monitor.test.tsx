@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   deriveMonitorState,
+  resumeIssueNow,
   formatMonitorAbsolute,
   formatMonitorAbsoluteFull,
   formatMonitorEta,
@@ -12,6 +13,21 @@ import {
   formatMonitorOffset,
   useMonitorCountdown,
 } from "./issue-monitor";
+
+describe("resume action routing", () => {
+  it("uses retry-now for a retry-only issue and monitor check for a real monitor", async () => {
+    const actions = { checkMonitorNow: vi.fn(async () => ({})), retryScheduledRetryNow: vi.fn(async () => ({})) };
+    const retry = { scheduledRetry: { status: "scheduled_retry" as const, scheduledRetryAt: "2026-11-20T00:00:00Z" } };
+    expect(await resumeIssueNow(retry, actions)).toBe("retry");
+    expect(actions.retryScheduledRetryNow).toHaveBeenCalledOnce();
+    expect(actions.checkMonitorNow).not.toHaveBeenCalled();
+    expect(await resumeIssueNow({ ...retry, monitorNextCheckAt: "2026-11-20T01:00:00Z" }, actions)).toBe("monitor");
+    expect(actions.checkMonitorNow).toHaveBeenCalledOnce();
+    await expect(resumeIssueNow({}, actions)).rejects.toThrow("当前没有");
+    expect(actions.retryScheduledRetryNow).toHaveBeenCalledOnce();
+    expect(actions.checkMonitorNow).toHaveBeenCalledOnce();
+  });
+});
 
 describe("monitor time formatting", () => {
   const now = new Date("2026-07-17T19:56:00.000Z");

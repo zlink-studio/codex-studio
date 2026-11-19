@@ -22,6 +22,14 @@ const blockerId = "blocker-1";
 const runId = "run-1";
 
 describe("recovery classifier boundary", () => {
+  it("recognizes an idle discussion as a deliberate wait while ordinary review still needs an owner", () => {
+    const input = { issues: [{ id: issueId, companyId, identifier: "ZLI-26", title: "Daily discussion",
+      status: "in_review", assigneeAgentId: agentId, workMode: "discussion" }], relations: [],
+      agents: [{ id: agentId, companyId, name: "Manager", role: "ceo", status: "idle" }] };
+    expect(classifyIssueGraphLiveness(input)).toEqual([]);
+    expect(classifyIssueGraphLiveness({ ...input, issues: [{ ...input.issues[0]!, workMode: "standard" }] }))
+      .toEqual([expect.objectContaining({ state: "in_review_without_action_path" })]);
+  });
   it("keeps issue graph liveness classifier parity with the compatibility export", () => {
     const input = {
       issues: [

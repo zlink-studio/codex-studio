@@ -48,6 +48,7 @@ import {
   isConversationExecutionWake,
   prepareConversationTurn,
   settleConversationTurn,
+  allowsDiscussionWake,
   undeliveredConversationComments,
 } from "../services/agent-conversations.js";
 import { classifyIssueGraphLiveness } from "../services/recovery/issue-graph-liveness.js";
@@ -57,6 +58,19 @@ import {
   buildPaperclipWakePayload,
   heartbeatService,
 } from "../services/heartbeat.js";
+
+describe("discussion admission", () => {
+  it("ignores idle automation and stale retries, admits a message and explicit retry", () => {
+    const discussion = { workMode: "discussion" };
+    for (const reason of ["issue_assigned", "timer", "issue_disposition_repair", "issue_children_completed", "finish_successful_run_handoff"])
+      expect(allowsDiscussionWake(discussion, { reason, wakeCommentId: "old-input" })).toBe(false);
+    expect(allowsDiscussionWake(discussion, { reason: "issue_commented", wakeCommentId: "new-input" })).toBe(true);
+    expect(allowsDiscussionWake(discussion, { reason: "issue_commented", wakeCommentId: "old-input", retryOfRunId: "old-run" })).toBe(false);
+    expect(allowsDiscussionWake(discussion, { taskRetryRequestId: "explicit-user-retry" })).toBe(true);
+    expect(allowsDiscussionWake(discussion, { interactionContinuation: true })).toBe(true);
+    expect(allowsDiscussionWake({ workMode: "standard" }, { reason: "issue_assigned" })).toBe(true);
+  });
+});
 
 const support = await getEmbeddedPostgresTestSupport();
 (support.supported ? describe : describe.skip)(
@@ -762,6 +776,27 @@ const support = await getEmbeddedPostgresTestSupport();
         await rm(cwd, { recursive: true, force: true });
       }
     }, 30000);
+    it("parks project discussions without requiring a status comment and preserves new input", async () => {
+      const thread = await issueService(db).create(companyId, {
+        title: "Project discussion", workMode: "discussion", status: "in_progress", assigneeAgentId: agentId,
+      });
+      const message = await issueService(db).addComment(thread.id, "Please discuss", { userId: "local-board" });
+      const run = await runFor(thread.id, message.id);
+      const succeeded = { ...run, status: "succeeded" };
+      expect(await settleConversationTurn(db, { ...run, status: "failed" })).toBe(false);
+      expect(await settleConversationTurn(db, succeeded)).toBe(true);
+      let saved = await issueService(db).getById(thread.id);
+      expect(saved?.status).toBe("in_review");
+      expect(saved?.conversationAgentId).toBeNull();
+      expect(saved?.workMode).toBe("discussion");
+      await issueService(db).addComment(thread.id, "A newer message", { userId: "local-board" });
+      expect(await settleConversationTurn(db, succeeded)).toBe(true);
+      saved = await issueService(db).getById(thread.id);
+      expect(saved?.status).toBe("in_progress");
+      await db.update(issues).set({ status: "cancelled" }).where(eq(issues.id, thread.id));
+      expect(await settleConversationTurn(db, succeeded)).toBe(false);
+      expect((await issueService(db).getById(thread.id))?.status).toBe("cancelled");
+    });
     it("parks successful native interaction-only turns without consuming unrelated or stale gates", async () => {
       const chat = await create();
       const message = await issueService(db).addComment(chat.id, "Plan the work", { userId: "local-board" });

@@ -14,6 +14,8 @@ import { prepareHeartbeatRuntimeServiceIntents, startHeartbeatRuntimeServices, r
 import { bindHeartbeatRunnerHomeMode, prepareHeartbeatExecutionConfiguration } from "./heartbeat/execution-configuration.js";
 import { createHeartbeatRunOutput } from "./heartbeat/run-output.js";
 import { prepareHeartbeatSession, resolveHeartbeatAdapterSession } from "./heartbeat/session-preparation.js";
+import { allowsDiscussionWake } from "./agent-conversations.js";
+import { hasInteractionContinuationWakeContext } from "./heartbeat/run-preparation.js";
 import { prepareHeartbeatTaskContext } from "./heartbeat/task-context.js";
 import { selectHeartbeatEnvironment } from "./heartbeat/environment-selection.js";
 import { reconcileMuseNativeTerminalRun } from "./native-runtime/muse-terminal-reconciliation.js";
@@ -1953,6 +1955,21 @@ export function heartbeatService(
       }
 
       const dispatchIssueId = readNonEmptyString(parseObject(run.contextSnapshot).issueId);
+      const dispatchContext = parseObject(run.contextSnapshot);
+      if (dispatchIssueId && !allowsDiscussionWake(await getIssueExecutionContext(run.companyId, dispatchIssueId), {
+        reason: readNonEmptyString(dispatchContext.wakeReason),
+        wakeCommentId: readNonEmptyString(dispatchContext.wakeCommentId) ?? readNonEmptyString(dispatchContext.commentId),
+        taskRetryRequestId: readNonEmptyString(dispatchContext.taskRetryRequestId),
+        manualUserWake: dispatchContext.discussionManualUserWake === true,
+        interactionContinuation: hasInteractionContinuationWakeContext(dispatchContext),
+        retryOfRunId: readNonEmptyString(dispatchContext.retryOfRunId),
+      })) {
+        await setRunStatus(run.id, "cancelled", { finishedAt: new Date(), error: "Discussion is waiting for a user message", errorCode: "discussion_waiting_for_message" });
+        await setWakeupStatus(run.wakeupRequestId, "cancelled", { finishedAt: new Date() });
+        await releaseIssueExecutionAndPromote((await getRun(run.id))!, { suppressImmediateRecovery: true });
+        await finalizeAgentStatus(agent.id, "cancelled");
+        return;
+      }
       const resumingAdmittedConversationTurn = !!runOptions.nativeLeaseOwner
         && typeof run.contextSnapshot?.conversationSessionGeneration === "number";
       if (dispatchIssueId && isConversation(await getIssueExecutionContext(run.companyId, dispatchIssueId))

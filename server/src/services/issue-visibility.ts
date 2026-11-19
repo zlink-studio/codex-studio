@@ -1,5 +1,5 @@
 import { nonIdleSlackIssueCondition } from "./slack-conversation-state.js";
-import { and, isNull, type SQL } from "drizzle-orm";
+import { and, isNull, ne, type SQL } from "drizzle-orm";
 import { issues } from "@paperclipai/db";
 
 export function visibleIssueCondition(): SQL {
@@ -12,5 +12,5 @@ export function visibleIssueSql(alias = "issues") {
 
 /** Work queues and execution totals omit persistent conversation containers. */
 export function executionIssueCondition(): SQL {
-  return and(visibleIssueCondition(), isNull(issues.conversationAgentId), nonIdleSlackIssueCondition())!;
+  return and(visibleIssueCondition(), isNull(issues.conversationAgentId), ne(issues.workMode, "discussion"), nonIdleSlackIssueCondition())!;
 }

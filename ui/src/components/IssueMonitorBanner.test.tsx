@@ -234,6 +234,18 @@ describe("IssueMonitorBanner / IssueMonitorComposerStrip rendering", () => {
     flushSync(() => root.unmount());
   });
 
+  it("labels a retry-only action as Retry now instead of a monitor check", () => {
+    const onCheckNow = vi.fn();
+    const issue = { ...issueWithMonitor(null), scheduledRetry: { status: "scheduled_retry", scheduledRetryAt: new Date(NOW.getTime() + 60_000).toISOString(), scheduledRetryAttempt: 2 } } as Issue;
+    const root = createRoot(container);
+    flushSync(() => root.render(<IssueMonitorComposerStrip issue={issue} onCheckNow={onCheckNow} />));
+    const button = Array.from(container.querySelectorAll("button")).find(b => b.textContent === "Retry now");
+    expect(button).toBeTruthy();
+    flushSync(() => button?.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+    expect(onCheckNow).toHaveBeenCalledOnce();
+    flushSync(() => root.unmount());
+  });
+
   it("renders the banner with a working Check now button while waiting", () => {
     const onCheckNow = vi.fn();
     expect(hasVisibleMonitorSurface(issueWithMonitor(new Date(NOW.getTime() + 2 * 60 * 60_000).toISOString()))).toBe(true);

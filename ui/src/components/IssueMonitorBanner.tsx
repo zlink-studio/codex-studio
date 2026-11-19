@@ -171,10 +171,12 @@ function CheckNowButton({
   onCheckNow,
   checkingNow,
   reviewRequested = false,
+  retry = false,
 }: {
   onCheckNow: () => void;
   checkingNow: boolean;
   reviewRequested?: boolean;
+  retry?: boolean;
 }) {
   return (
     <Button
@@ -185,7 +187,7 @@ function CheckNowButton({
       onClick={onCheckNow}
       disabled={checkingNow}
     >
-      {checkingNow ? "Checking…" : reviewRequested ? "Check status" : "Check now"}
+      {checkingNow ? (retry ? "Retrying…" : "Checking…") : retry ? "Retry now" : reviewRequested ? "Check status" : "Check now"}
     </Button>
   );
 }
@@ -262,7 +264,7 @@ export function IssueMonitorBanner({
       icon={Clock}
       title={copy.bannerTitle}
       className={cn("relative my-3", canCancel && "pr-12")}
-      actions={onCheckNow && !copy.workspaceWait ? <CheckNowButton onCheckNow={onCheckNow} checkingNow={checkingNow} reviewRequested={copy.pullRequestReview} /> : null}
+      actions={onCheckNow && !copy.workspaceWait ? <CheckNowButton onCheckNow={onCheckNow} checkingNow={checkingNow} reviewRequested={copy.pullRequestReview} retry={deriveMonitorState(issue).source === "scheduled-retry"} /> : null}
     >
       {canCancel ? <CancelMonitorButton key={issue.id} onCancel={onCancelMonitor} /> : null}
       <div className="flex flex-col gap-2">
@@ -306,7 +308,7 @@ export function IssueMonitorComposerStrip({
             <div className="text-xs text-muted-foreground">{copy.stripMeta.join(" · ")}</div>
           </div>
         </div>
-        {onCheckNow && !copy.workspaceWait ? <CheckNowButton onCheckNow={onCheckNow} checkingNow={checkingNow} reviewRequested={copy.pullRequestReview} /> : null}
+        {onCheckNow && !copy.workspaceWait ? <CheckNowButton onCheckNow={onCheckNow} checkingNow={checkingNow} reviewRequested={copy.pullRequestReview} retry={deriveMonitorState(issue).source === "scheduled-retry"} /> : null}
       </div>
       <p className="mt-1.5 text-xs text-muted-foreground">
         {copy.pullRequestReview

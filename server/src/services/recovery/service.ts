@@ -3484,6 +3484,12 @@ export function recoveryService(
         result.skipped += 1;
         continue;
       }
+      if (issue.workMode === "discussion" && action.kind === "deliberate_wait_without_target") {
+        await resolveDispositionRepairActionAsCovered(issue, "discussion_waits_for_user_message");
+        result.resolved += 1;
+        result.issueIds.push(issue.id);
+        continue;
+      }
       const wakePolicy = parseObject(action.wakePolicy);
       const wakePolicyType = readNonEmptyString(wakePolicy.type);
       if (
@@ -3798,7 +3804,7 @@ export function recoveryService(
           Boolean(readNonEmptyString(context.goalControlRequestId)) || context.resumeSessionGoalHeartbeat === true ||
           isPluginManagedIssueLifecycle(issue) || routine.length > 0 || workspaceChildren.length > 0 ||
           Boolean(goal[0]?.status && goal[0].status !== "complete") || Boolean(active && !ownsRepair),
-        conversation: Boolean(issue.conversationAgentId) || isWaitingConversation(issue),
+        conversation: issue.workMode === "discussion" || Boolean(issue.conversationAgentId) || isWaitingConversation(issue),
         agentInvokable: Boolean(agent && await isAgentInvokable(agent) && isHeartbeatWakeOnDemandEnabled(agent)),
       },
     });
@@ -4561,7 +4567,7 @@ export function recoveryService(
           await deliverConversationComments(db, issue, deps.enqueueWakeup);
         }
       }
-      if (isWaitingConversation(issue)) { result.skipped += 1; continue; }
+      if (issue.workMode === "discussion" || isWaitingConversation(issue)) { result.skipped += 1; continue; }
       const executionState = issue.status === "in_review"
         ? parseIssueExecutionState(issue.executionState)
         : null;

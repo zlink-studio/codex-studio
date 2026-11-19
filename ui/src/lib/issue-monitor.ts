@@ -35,6 +35,21 @@ export interface MonitorIssueLike {
   scheduledRetry?: ScheduledRetry | null;
 }
 
+/** Route the visible action by its durable source, including retry-only tasks. */
+export async function resumeIssueNow(
+  issue: MonitorIssueLike | null | undefined,
+  actions: { checkMonitorNow: () => Promise<unknown>; retryScheduledRetryNow: () => Promise<unknown> },
+): Promise<"retry" | "monitor"> {
+  const source = issue ? deriveMonitorState(issue).source : "none";
+  if (source === "scheduled-retry") {
+    await actions.retryScheduledRetryNow();
+    return "retry";
+  }
+  if (source !== "monitor") throw new Error("当前没有可立即执行的重试或定时检查，请刷新任务。");
+  await actions.checkMonitorNow();
+  return "monitor";
+}
+
 export type MonitorDisplayState =
   | "scheduled"
   | "retrying"

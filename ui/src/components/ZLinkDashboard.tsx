@@ -69,7 +69,8 @@ interface ZLinkDashboardProps {
 export function ZLinkDashboard({ companyId, companyName, summary, issues, agents, issuesError, agentsError, notices, activity, runs, charts, plugins, onNewTask }: ZLinkDashboardProps) {
   const [filter, setFilter] = useState<(typeof FILTERS)[number]["id"]>("all");
   const [search, setSearch] = useState("");
-  const ordered = [...(issues ?? [])].sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
+  const discussions = (issues ?? []).filter(issue => issue.workMode === "discussion" && issue.status !== "cancelled" && issue.status !== "done");
+  const ordered = (issues ?? []).filter(issue => issue.workMode !== "discussion").sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
   const review = ordered.filter(issue => issue.status === "in_review");
   const blocked = ordered.filter(issue => issue.status === "blocked");
   const active = ordered.filter(issue => issue.status === "in_progress");
@@ -127,6 +128,17 @@ export function ZLinkDashboard({ companyId, companyName, summary, issues, agents
       </div>
       <Link to="/inbox" className="zlink-text-link">打开收件箱<ArrowUpRight aria-hidden="true" /></Link>
     </section>
+
+    {discussions.length > 0 && <section aria-label="日常沟通">
+      <Card className="zlink-task-panel">
+        <div className="zlink-section-heading"><div><h2>日常沟通<span className="zlink-section-count">{discussions.length}</span></h2><p>收到留言才唤醒，具体工作进入独立执行任务。</p></div></div>
+        <div className="zlink-task-list">{discussions.map(issue => <Link key={issue.id} to={`/issues/${issue.identifier ?? issue.id}`} className="zlink-task-row" disableIssueQuicklook>
+          <span className="zlink-task-status-icon"><Inbox aria-hidden="true" /></span>
+          <div className="zlink-task-copy"><h3>{issue.title}</h3><div className="zlink-task-meta"><span>{issue.identifier}</span></div></div>
+          <span className="zlink-status">{issue.status === "in_review" ? "等待留言" : issue.status === "blocked" ? "需要处理" : "待回复"}</span><ArrowUpRight className="zlink-row-arrow" aria-hidden="true" />
+        </Link>)}</div>
+      </Card>
+    </section>}
 
     {!!summary?.agents.running && runs}
     <div className="zlink-work-grid">

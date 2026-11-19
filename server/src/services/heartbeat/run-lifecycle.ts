@@ -1435,7 +1435,7 @@ export function createHeartbeatLifecycle(db: Db, dependencies: HeartbeatLifecycl
     const issueId = readNonEmptyString(context.issueId);
     if (!issueId) return;
     const waitingContext = await getIssueExecutionContext(run.companyId, issueId);
-    if (isWaitingConversation(waitingContext) || waitingContext?.externalConversationState === "waiting") return;
+    if (waitingContext?.workMode === "discussion" || isWaitingConversation(waitingContext) || waitingContext?.externalConversationState === "waiting") return;
 
     const [issue, agent] = await Promise.all([
       db
@@ -1637,7 +1637,7 @@ export function createHeartbeatLifecycle(db: Db, dependencies: HeartbeatLifecycl
       readNonEmptyString(context.issueId) ?? readNonEmptyString(context.taskId);
     if (!issueId) return;
     const waitingContext = await getIssueExecutionContext(run.companyId, issueId);
-    if (isWaitingConversation(waitingContext) || waitingContext?.externalConversationState === "waiting") return;
+    if (waitingContext?.workMode === "discussion" || isWaitingConversation(waitingContext) || waitingContext?.externalConversationState === "waiting") return;
     if (
       readNonEmptyString(context.goalControlRequestId) ||
       context.resumeSessionGoalHeartbeat === true
@@ -1658,6 +1658,7 @@ export function createHeartbeatLifecycle(db: Db, dependencies: HeartbeatLifecycl
         title: issues.title,
         description: issues.description,
         status: issues.status,
+        workMode: issues.workMode,
         assigneeAgentId: issues.assigneeAgentId,
         assigneeUserId: issues.assigneeUserId,
         executionState: issues.executionState,
@@ -1956,7 +1957,7 @@ export function createHeartbeatLifecycle(db: Db, dependencies: HeartbeatLifecycl
       readNonEmptyString(contextSnapshot.taskId);
     if (!issueId) return;
     const waitingContext = await getIssueExecutionContext(run.companyId, issueId);
-    if (isWaitingConversation(waitingContext) || waitingContext?.externalConversationState === "waiting") return;
+    if (waitingContext?.workMode === "discussion" || isWaitingConversation(waitingContext) || waitingContext?.externalConversationState === "waiting") return;
 
     const issue = await db
       .select({
@@ -2528,6 +2529,17 @@ export function createHeartbeatLifecycle(db: Db, dependencies: HeartbeatLifecycl
           issueCommentRetryQueuedAt: null,
         });
       }
+      return { outcome: "not_applicable" as const, queuedRun: null };
+    }
+
+    // A discussion reply is one event-driven turn, not a mandatory status report.
+    const discussion = await getIssueExecutionContext(run.companyId, issueId);
+    if (discussion?.workMode === "discussion") {
+      await patchRunIssueCommentStatus(run.id, {
+        issueCommentStatus: "not_applicable",
+        issueCommentSatisfiedByCommentId: null,
+        issueCommentRetryQueuedAt: null,
+      });
       return { outcome: "not_applicable" as const, queuedRun: null };
     }
 

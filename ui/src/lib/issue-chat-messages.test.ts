@@ -22,6 +22,17 @@ import type { IssueTimelineEvent } from "./issue-timeline-events";
 import type { ActiveRunForIssue, LiveRunForIssue } from "../api/heartbeats";
 import { registerUIAdapter, unregisterUIAdapter } from "../adapters/registry";
 
+describe("protocol markers in historical comments", () => {
+  it("hides an agent end_turn marker while retaining a user quoting the same text", () => {
+    const messages = buildIssueChatMessages({
+      comments: [createComment({ id: "marker", authorAgentId: "agent-1", body: "end_turn" }),
+        createComment({ id: "human", authorAgentId: null, authorUserId: "user-1", body: "end_turn" })],
+      interactions: [], timelineEvents: [], linkedRuns: [], liveRuns: [],
+    });
+    expect(messages.map(message => message.id)).toEqual(["human"]);
+  });
+});
+
 describe("connection intents in the task feed", () => {
   it("orders the card chronologically and collapses live/polling snapshots into one updated message", () => {
     const pending = {

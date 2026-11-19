@@ -215,6 +215,12 @@ export function buildPaperclipTaskMarkdown(input: {
           "The user has approved the plan for handoff. Perform that handoff now: select or create a suitable project, then create the ordinary assigned execution tasks with the relevant approved plan in initialPlan before execution starts. Do not stop at acknowledging approval or ask for another confirmation. Keep the original plan here, link the created tasks, and leave this conversation available for discussion. Do not implement here or create subtasks of this conversation.",
         );
       }
+    } else if (issue.workMode === "discussion") {
+      lines.push(
+        "", "Daily discussion mode directive:",
+        "This is an ongoing project discussion, not an execution task. Respond to the current user message. For concrete execution, create and link a separate assigned task in the relevant project with its context and acceptance criteria. Do not execute that task here.",
+        "When there is no new user request, end the turn quietly. The platform parks this discussion until the next message. Do not poll, schedule a monitor, invent recovery endpoints, or create an artificial blocker just to keep this thread open. Do not output protocol markers such as end_turn.",
+      );
     } else if (issue.workMode === "ask") {
       lines.push(
         `- Work mode: ${quoteTaskScalar("ask")}`,

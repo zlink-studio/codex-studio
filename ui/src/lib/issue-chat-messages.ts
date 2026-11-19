@@ -1199,6 +1199,8 @@ export function buildIssueChatMessages(args: {
   const orderedMessages: MessageWithOrder[] = [];
 
   for (const comment of sortByCreated(comments)) {
+    // Hide historical adapter stop markers while retaining real user messages.
+    if (comment.authorAgentId && comment.body.trim() === "end_turn") continue;
     if (isRedundantAiRecoveryNotice(comment, interactions)) continue;
     orderedMessages.push({
       createdAtMs: toTimestamp(comment.createdAt),

@@ -20,11 +20,31 @@ import {
 import { sanitizeQuarantinedCommentForHigherTrust } from "./source-trust.js";
 
 export type ConversationIdentity = {
+  workMode?: string | null;
   conversationAgentId?: string | null;
   conversationUserId?: string | null;
   conversationState?: string | null;
   status?: string;
 };
+
+/** Project discussions wake for a message or an explicit user action, never idle work. */
+export function allowsDiscussionWake(
+  issue: { workMode?: string | null } | null | undefined,
+  input: {
+    reason?: string | null;
+    wakeCommentId?: string | null;
+    manualUserWake?: boolean;
+    taskRetryRequestId?: string | null;
+    interactionContinuation?: boolean;
+    retryOfRunId?: string | null;
+  },
+): boolean {
+  if (issue?.workMode !== "discussion") return true;
+  if (input.taskRetryRequestId || input.interactionContinuation) return true;
+  if (input.manualUserWake && !input.retryOfRunId) return true;
+  return Boolean(input.wakeCommentId && !input.retryOfRunId &&
+    (input.reason === "issue_commented" || input.reason === "issue_reopened_via_comment"));
+}
 export function isConversation(
   issue: ConversationIdentity | null | undefined,
 ): boolean {
@@ -295,8 +315,10 @@ export async function settleConversationTurn(
       .from(issues)
       .where(and(eq(issues.id, issueId), eq(issues.companyId, run.companyId)))
       .for("update");
+    const discussion = issue?.workMode === "discussion";
     if (
-      !isConversation(issue) ||
+      (!isConversation(issue) && !discussion) ||
+      (discussion && (issue.assigneeAgentId !== run.agentId || ["done", "cancelled"].includes(issue.status))) ||
       (issue.executionRunId && issue.executionRunId !== run.id)
     )
       return false;
@@ -308,7 +330,7 @@ export async function settleConversationTurn(
           eq(issueComments.issueId, issueId),
           eq(issueComments.createdByRunId, run.id),
           eq(issueComments.origin, "comment"),
-          eq(issueComments.authorAgentId, issue.conversationAgentId!),
+          eq(issueComments.authorAgentId, discussion ? run.agentId : issue.conversationAgentId!),
           isNull(issueComments.deletedAt),
         ),
       )
@@ -327,8 +349,9 @@ export async function settleConversationTurn(
           ))
           .limit(1)
       : [];
-    if (!response && !interaction && context.conversationReset !== true) return false;
+    if (!discussion && !response && !interaction && context.conversationReset !== true) return false;
     if (
+      !discussion &&
       context.conversationSessionGeneration !==
       issue.conversationSessionGeneration
     )
@@ -366,14 +389,14 @@ export async function settleConversationTurn(
     const conversationState = pending ? "active" : "waiting";
     if (
       issue.status === status &&
-      issue.conversationState === conversationState
+      (discussion || issue.conversationState === conversationState)
     )
       return true;
     await tx
       .update(issues)
       .set({
         status,
-        conversationState,
+        ...(!discussion ? { conversationState } : {}),
         statusVersion: sql`${issues.statusVersion} + 1`,
         completedAt: null,
         cancelledAt: null,
@@ -396,7 +419,7 @@ export async function settleConversationTurn(
         runId: run.id,
         details: {
           status,
-          conversationState,
+          ...(!discussion ? { conversationState } : { workMode: "discussion", waitingFor: pending ? "reply" : "user_message" }),
           conversationSessionGeneration: issue.conversationSessionGeneration,
         },
       })
