@@ -1,0 +1,6 @@
+{
+  "name": "tyne-spain-site-qa",
+  "private": true,
+  "description": "QA tooling for the TYN-e España static site",
+  "dependencies": { "playwright-core": "^1.48.0" }
+}
